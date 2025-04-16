@@ -1,7 +1,5 @@
 import { Model, DataTypes } from "sequelize"
 import { sequelize } from "../../database.js";
-import { Usuario } from "./usuarios.model.js";
-
 
 export class CodigosRecuperarVerificacion extends Model { }
 
@@ -23,14 +21,3 @@ CodigosRecuperarVerificacion.init({
     sequelize,
     modelName: "codigos_recuperar_verificaciones"
 })
-
-CodigosRecuperarVerificacion.belongsTo(Usuario, { foreignKey: "usuarioID" })
-
-CodigosRecuperarVerificacion
-    .sync({ alter:  false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

@@ -1,6 +1,5 @@
 import { Model, DataTypes } from "sequelize";
 import { sequelize } from "../../database.js";
-import { RolesPorPermisos } from "./roles_por_permisos.js";
 
 export class Permiso extends Model { }
 
@@ -37,9 +36,6 @@ async function initializePermissions() {
     try {
         await sequelize.authenticate();
         console.log('Connection has been established successfully.');
-
-        await Permiso.sync({ alter: false });
-        console.log('Permiso table synced successfully.');
 
         const existingPermissions = await Permiso.count();
         if (existingPermissions > 0) return;
@@ -145,5 +141,3 @@ async function initializePermissions() {
 }
 
 // initializePermissions();
-
-

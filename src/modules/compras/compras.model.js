@@ -1,7 +1,5 @@
 import { Model, DataTypes } from "sequelize"
 import { sequelize } from "../../database.js";
-import { Proveedor } from "../proveedores/proveedores.model.js";
-
 
 export class Compra extends Model { }
 
@@ -37,15 +35,3 @@ Compra.init({
     sequelize,
     modelName: "compra"
 })
-
-Compra.belongsTo(Proveedor, { foreignKey: "proveedorID", as: "proveedor" })
-
-
-Compra
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

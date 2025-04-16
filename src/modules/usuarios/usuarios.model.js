@@ -1,6 +1,5 @@
 import { Model, DataTypes } from "sequelize"
 import { sequelize } from "../../database.js";
-import { Rol } from "../roles/roles.model.js"
 
 export class Usuario extends Model { }
 
@@ -41,15 +40,3 @@ Usuario.init({
         }
     }
 })
-
-Usuario.belongsTo(Rol, { foreignKey: "rolID" })
-Rol.hasMany(Usuario, { foreignKey: "rolID" })
-
-Usuario
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

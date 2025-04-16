@@ -1,8 +1,5 @@
 import { Model, DataTypes } from "sequelize"
 import { sequelize } from "../../database.js";
-import { Compra } from "./compras.model.js";
-import { Insumo } from "../insumos/insumos.model.js";
-
 
 export class DetalleCompra extends Model { }
 
@@ -33,18 +30,3 @@ DetalleCompra.init({
     sequelize,
     modelName: "detalle_compra"
 })
-
-DetalleCompra.belongsTo(Compra, { foreignKey: "compraID", onDelete: "CASCADE" })
-DetalleCompra.belongsTo(Insumo, { foreignKey: "insumoID", onDelete: "CASCADE" })
-Compra.hasMany(DetalleCompra, { foreignKey: "compraID" })
-
-
-
-DetalleCompra
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

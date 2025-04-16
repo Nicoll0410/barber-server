@@ -1,8 +1,5 @@
 import { Model, DataTypes } from "sequelize"
 import { sequelize } from "../../database.js";
-import { Insumo } from "../insumos/insumos.model.js";
-import { Servicio } from "./servicios.model.js";
-
 
 export class ServiciosPorInsumos extends Model { }
 
@@ -28,16 +25,3 @@ ServiciosPorInsumos.init({
     sequelize,
     modelName: "servicios_por_insumo"
 })
-
-
-ServiciosPorInsumos.belongsTo(Servicio, { foreignKey: "servicioID" })
-ServiciosPorInsumos.belongsTo(Insumo, { foreignKey: "insumoID" })
-
-ServiciosPorInsumos
-    .sync({ alter:  false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

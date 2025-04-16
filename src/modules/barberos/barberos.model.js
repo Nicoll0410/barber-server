@@ -53,26 +53,10 @@ Barbero.init({
     modelName: "barbero"
 })
 
-Barbero.belongsTo(Usuario, { foreignKey: "usuarioID", onDelete: "CASCADE" })
-Usuario.hasMany(Barbero, { foreignKey: "usuarioID", onDelete: "CASCADE" })
-
-Barbero
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });
-
-
 async function initializeAdmin() {
     try {
 
         await sequelize.authenticate()
-
-        await Barbero.sync({ alter: true });
-
         const amount = await Barbero.count();
 
         if (amount > 0) return;

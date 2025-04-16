@@ -1,7 +1,6 @@
 import { Model, DataTypes } from "sequelize"
 import { sequelize } from "../../database.js";
 
-
 export class Servicio extends Model { }
 
 Servicio.init({
@@ -35,12 +34,3 @@ Servicio.init({
     sequelize,
     modelName: "servicio"
 })
-
-Servicio
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

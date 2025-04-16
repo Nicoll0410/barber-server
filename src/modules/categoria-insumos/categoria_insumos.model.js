@@ -37,13 +37,3 @@ CategoriaProducto.init({
     }
 })
 
-
-
-CategoriaProducto
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

@@ -17,7 +17,7 @@ import { movimientosRouter } from "./modules/movimientos/movimientos.route.js"
 import { dashboardRouter } from "./modules/dashboard/dashboard.route.js"
 import { publicRouter } from "./modules/public/public.route.js"
 import { Database } from "./database.js"
-
+import { syncAllModels } from "./syncAll.js";
 
 export class Server {
     constructor() {
@@ -26,7 +26,14 @@ export class Server {
         this.middlewares()
         this.routes()
 
-        this.app.listen(process.env.PORT, () => console.log(`Servidor ejecutandose en el puerto ${process.env.PORT} 🎉🎉🎉`))
+        // Espera sincronización antes de levantar el servidor
+        syncAllModels().then(() => {
+            this.app.listen(process.env.PORT, () =>
+                console.log(`Servidor ejecutandose en el puerto ${process.env.PORT} 🎉🎉🎉`)
+            );
+        }).catch(err => {
+            console.error("Error al sincronizar modelos:", err);
+        });
     }
 
     middlewares() {

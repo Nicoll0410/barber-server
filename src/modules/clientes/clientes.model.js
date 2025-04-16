@@ -1,7 +1,5 @@
 import { Model, DataTypes } from "sequelize"
 import { sequelize } from "../../database.js";
-import { Usuario } from "../usuarios/usuarios.model.js";
-
 
 export class Cliente extends Model { }
 
@@ -36,15 +34,3 @@ Cliente.init({
     sequelize,
     modelName: "cliente"
 })
-
-Cliente.belongsTo(Usuario, { foreignKey: "usuarioID" })
-Usuario.hasMany(Cliente, { foreignKey: "usuarioID", as: "cliente" })
-
-Cliente
-    .sync({ alter:  false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

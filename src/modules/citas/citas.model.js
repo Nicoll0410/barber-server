@@ -1,8 +1,5 @@
 import { Model, DataTypes, Op } from "sequelize"
 import { sequelize } from "../../database.js";
-import { Servicio } from "../servicios/servicios.model.js";
-import { Barbero } from "../barberos/barberos.model.js"
-import { Cliente } from "../clientes/clientes.model.js"
 import { format, sub } from "date-fns";
 import cron from "node-cron"
 
@@ -72,17 +69,6 @@ Cita.init({
     }
 })
 
-Servicio.hasMany(Cita, { foreignKey: "servicioID" })
-Barbero.hasMany(Cita, { foreignKey: "barberoID" })
-Cliente.hasMany(Cita, { foreignKey: "pacienteID" })
-
-
-Cita.belongsTo(Servicio, { foreignKey: "servicioID" })
-Cita.belongsTo(Barbero, { foreignKey: "barberoID" })
-Cita.belongsTo(Cliente, { foreignKey: "pacienteID" })
-
-
-
 
 const task = cron.schedule('* * * * *', async () => {
     try {
@@ -110,13 +96,3 @@ const task = cron.schedule('* * * * *', async () => {
 }, {
     scheduled: false
 });
-
-
-Cita
-    .sync({ alter: false })
-    .then((result) => {
-        task.start()
-    })
-    .catch((err) => {
-        console.log(err);
-    });
