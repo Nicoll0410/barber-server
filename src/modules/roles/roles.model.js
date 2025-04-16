@@ -44,9 +44,6 @@ async function initializeRoles() {
         await sequelize.authenticate();
         console.log('Connection has been established successfully.');
 
-        await Rol.sync({ alter:  false });
-        console.log('Roles table synced successfully.');
-
         const rolesCount = await Rol.count();
         if (rolesCount > 0) return;
 

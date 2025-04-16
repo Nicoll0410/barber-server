@@ -41,15 +41,3 @@ Usuario.init({
         }
     }
 })
-
-Usuario.belongsTo(Rol, { foreignKey: "rolID" })
-Rol.hasMany(Usuario, { foreignKey: "rolID" })
-
-Usuario
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

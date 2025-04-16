@@ -25,20 +25,10 @@ RolesPorPermisos.init({
     tableName: "roles_por_permisos"
 });
 
-// Definir las relaciones
-RolesPorPermisos.belongsTo(Rol, { foreignKey: "rolID" });
-RolesPorPermisos.belongsTo(Permiso, { foreignKey: "permisoID" });
-
-Rol.hasMany(RolesPorPermisos, { foreignKey: "rolID" });
-Permiso.hasMany(RolesPorPermisos, { foreignKey: "permisoID" });
-
 async function initializeRolesPorPermisos() {
     try {
         await sequelize.authenticate();
         console.log('Connection has been established successfully.');
-
-        await RolesPorPermisos.sync({ alter: true });
-        console.log('RolesPorPermisos table synced successfully.');
 
         const admin = await Rol.findOne({ where: { nombre: "Administrador" } });
         const barbero = await Rol.findOne({ where: { nombre: "Barbero" } });

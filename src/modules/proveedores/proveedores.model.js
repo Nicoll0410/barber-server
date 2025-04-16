@@ -45,12 +45,3 @@ Proveedor.init({
     modelName: "proveedor",
     tableName: "proveedores"
 })
-
-Proveedor
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

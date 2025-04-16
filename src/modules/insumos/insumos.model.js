@@ -41,8 +41,3 @@ Insumo.init({
         }
     }
 })
-
-Insumo.belongsTo(CategoriaProducto, { foreignKey: "categoriaID" })
-CategoriaProducto.hasMany(Insumo, { foreignKey: "categoriaID" });
-
-Insumo.sync({ alter: false })

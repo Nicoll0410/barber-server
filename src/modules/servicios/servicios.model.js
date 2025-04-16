@@ -35,12 +35,3 @@ Servicio.init({
     sequelize,
     modelName: "servicio"
 })
-
-Servicio
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

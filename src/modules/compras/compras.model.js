@@ -37,15 +37,3 @@ Compra.init({
     sequelize,
     modelName: "compra"
 })
-
-Compra.belongsTo(Proveedor, { foreignKey: "proveedorID", as: "proveedor" })
-
-
-Compra
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

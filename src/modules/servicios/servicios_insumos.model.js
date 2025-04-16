@@ -28,16 +28,3 @@ ServiciosPorInsumos.init({
     sequelize,
     modelName: "servicios_por_insumo"
 })
-
-
-ServiciosPorInsumos.belongsTo(Servicio, { foreignKey: "servicioID" })
-ServiciosPorInsumos.belongsTo(Insumo, { foreignKey: "insumoID" })
-
-ServiciosPorInsumos
-    .sync({ alter:  false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

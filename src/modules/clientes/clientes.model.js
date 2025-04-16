@@ -36,15 +36,3 @@ Cliente.init({
     sequelize,
     modelName: "cliente"
 })
-
-Cliente.belongsTo(Usuario, { foreignKey: "usuarioID" })
-Usuario.hasMany(Cliente, { foreignKey: "usuarioID", as: "cliente" })
-
-Cliente
-    .sync({ alter:  false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

@@ -23,16 +23,3 @@ CodigosVerificacion.init({
     sequelize,
     modelName: "codigos_verificaciones"
 })
-
-
-CodigosVerificacion.belongsTo(Usuario, { foreignKey: "usuarioID", onDelete: "CASCADE" })
-
-
-CodigosVerificacion
-    .sync({ alter:  false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

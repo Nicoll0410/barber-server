@@ -24,14 +24,3 @@ Movimiento.init({
     sequelize,
     modelName: "movimiento"
 })
-
-Movimiento.belongsTo(Insumo, { foreignKey: "insumoID", onDelete: "CASCADE", as: "insumo" })
-
-Movimiento
-    .sync({ alter: false })
-    .then((result) => {
-        console.log(result);
-    })
-    .catch((err) => {
-        console.log(err);
-    });

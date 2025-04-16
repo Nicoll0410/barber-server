@@ -38,9 +38,6 @@ async function initializePermissions() {
         await sequelize.authenticate();
         console.log('Connection has been established successfully.');
 
-        await Permiso.sync({ alter: false });
-        console.log('Permiso table synced successfully.');
-
         const existingPermissions = await Permiso.count();
         if (existingPermissions > 0) return;
 
@@ -145,5 +142,3 @@ async function initializePermissions() {
 }
 
 // initializePermissions();
-
-
