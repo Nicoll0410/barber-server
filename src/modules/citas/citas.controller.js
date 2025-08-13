@@ -371,79 +371,118 @@ async get(req = request, res = response) {
         }
     }
 
-async create(req = request, res = response) {
-    try {
-        // Validaciones básicas en el controlador
-        const { servicioID, barberoID, fecha, hora, pacienteID, pacienteTemporalNombre } = req.body;
-        if (!servicioID) throw new Error("El id del servicio es obligatorio");
-        if (!barberoID) throw new Error("El id del barbero es obligatorio");
-        if (!fecha) throw new Error("La fecha es obligatoria");
-        if (!hora) throw new Error("La hora es obligatoria");
-        
-        // Validación modificada para clientes temporales
-        if (!pacienteID && !pacienteTemporalNombre) {
-            throw new Error("Debe indicar un paciente registrado o proporcionar nombre para cliente temporal");
-        }
-
-        const { duracionMaxima } = await Servicio.findByPk(
-            servicioID,
-            { attributes: ["duracionMaxima"] }
-        );
-
-        if (!duracionMaxima) throw new Error("Servicio no encontrado");
-
-        const horaObj = parse(
-            hora.toUpperCase(),
-            "h:mm a",
-            new Date()
-        );
-
-        const [svcH, svcM, svcS] = duracionMaxima.split(":").map(Number);
-        const horaFinObj = add(horaObj, { hours: svcH, minutes: svcM, seconds: svcS });
-
-        const horaFormatted = format(horaObj, "HH:mm:ss");
-        const horaFin = format(horaFinObj, "HH:mm:ss");
-
-        const direccionDef = req.body.direccion || "En barbería";
-
-        // Build objeto a crear
-        const nuevo = {
-            servicioID,
-            barberoID,
-            fecha,
-            direccion: direccionDef,
-            hora: horaFormatted,
-            horaFin,
-        };
-
-        // Manejo de cliente (registrado o temporal)
-        if (pacienteID) {
-            // Verificar que el cliente exista si se proporciona ID
-            const clienteExiste = await Cliente.findByPk(pacienteID);
-            if (!clienteExiste) {
-                throw new Error("El cliente especificado no existe");
+    async create(req = request, res = response) {
+        try {
+            // Validaciones básicas
+            const { servicioID, barberoID, fecha, hora, direccion = "En barbería", pacienteID, pacienteTemporalNombre, pacienteTemporalTelefono } = req.body;
+            
+            if (!servicioID || !barberoID || !fecha || !hora) {
+                return res.status(400).json({ 
+                    success: false,
+                    mensaje: "Faltan campos obligatorios: servicioID, barberoID, fecha y hora" 
+                });
             }
-            nuevo.pacienteID = pacienteID;
-        } else {
-            // Campos para cliente temporal
-            nuevo.pacienteTemporalNombre = pacienteTemporalNombre.trim();
-            nuevo.pacienteTemporalTelefono = req.body.pacienteTemporalTelefono?.trim() || null;
+
+            // Validación: debe tener pacienteID o datos de cliente temporal, pero no ambos
+            if (!pacienteID && !pacienteTemporalNombre) {
+                return res.status(400).json({ 
+                    success: false,
+                    mensaje: "Se requiere pacienteID (cliente registrado) o nombre para cliente temporal" 
+                });
+            }
+
+            if (pacienteID && pacienteTemporalNombre) {
+                return res.status(400).json({ 
+                    success: false,
+                    mensaje: "Solo se debe proporcionar pacienteID o datos de cliente temporal, no ambos" 
+                });
+            }
+
+            // Verificar que el cliente exista si se proporciona ID
+            if (pacienteID) {
+                const clienteExiste = await Cliente.findByPk(pacienteID);
+                if (!clienteExiste) {
+                    return res.status(404).json({ 
+                        success: false,
+                        mensaje: "El cliente especificado no existe" 
+                    });
+                }
+            }
+
+            // Validar nombre de cliente temporal
+            if (pacienteTemporalNombre && !pacienteTemporalNombre.trim()) {
+                return res.status(400).json({ 
+                    success: false,
+                    mensaje: "El nombre del cliente temporal no puede estar vacío" 
+                });
+            }
+
+            // Validar teléfono si se proporciona
+            if (pacienteTemporalTelefono && !/^\d{10}$/.test(pacienteTemporalTelefono)) {
+                return res.status(400).json({ 
+                    success: false,
+                    mensaje: "El teléfono debe tener 10 dígitos numéricos" 
+                });
+            }
+
+            // Obtener duración del servicio
+            const servicio = await Servicio.findByPk(servicioID, { 
+                attributes: ["duracionMaxima"] 
+            });
+            
+            if (!servicio) {
+                return res.status(404).json({ 
+                    success: false,
+                    mensaje: "Servicio no encontrado" 
+                });
+            }
+
+            // Convertir hora a formato 24h
+            const horaObj = parse(hora.toUpperCase(), "h:mm a", new Date());
+            const [h, m, s] = servicio.duracionMaxima.split(":").map(Number);
+            const horaFinObj = add(horaObj, { hours: h, minutes: m, seconds: s });
+
+            // Crear objeto de cita
+            const nuevaCita = {
+                servicioID,
+                barberoID,
+                fecha,
+                hora: format(horaObj, "HH:mm:ss"),
+                horaFin: format(horaFinObj, "HH:mm:ss"),
+                direccion,
+                estado: "Pendiente"
+            };
+
+            // Asignar cliente (registrado o temporal)
+            if (pacienteID) {
+                nuevaCita.pacienteID = pacienteID;
+                nuevaCita.pacienteTemporalNombre = null;
+                nuevaCita.pacienteTemporalTelefono = null;
+            } else {
+                nuevaCita.pacienteID = null;
+                nuevaCita.pacienteTemporalNombre = pacienteTemporalNombre.trim();
+                nuevaCita.pacienteTemporalTelefono = pacienteTemporalTelefono?.trim() || null;
+            }
+
+            // Crear la cita en la base de datos
+            const citaCreada = await Cita.create(nuevaCita);
+
+            return res.status(201).json({
+                success: true,
+                mensaje: "Cita creada exitosamente",
+                cita: citaCreada
+            });
+
+        } catch (error) {
+            console.error("Error en creación de cita:", error);
+            return res.status(500).json({ 
+                success: false,
+                mensaje: "Error interno al crear la cita",
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
         }
-
-        const cita = await Cita.create(nuevo);
-
-        return res.status(201).json({
-            mensaje: "Cita registrada correctamente",
-            cita,
-        });
-    } catch (error) {
-        console.error("Error al crear cita:", error);
-        return res.status(400).json({ 
-            mensaje: error.message,
-            error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
     }
-}
+
 
     async createByPatient(req = request, res = response) {
         try {
