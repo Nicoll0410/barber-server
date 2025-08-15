@@ -22,6 +22,10 @@ Servicio.init({
         type: DataTypes.TIME,
         allowNull: false,
     },
+    duracionMaximaConvertido: {
+        type: DataTypes.TIME,
+        allowNull: false,
+    },
     duracionRedondeada: {  // Nuevo campo para almacenar la duración redondeada
         type: DataTypes.TIME,
         allowNull: true,
