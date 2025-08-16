@@ -16,52 +16,60 @@ const FRONTEND_URL =
 
 class ClientesController {
   /* ─────────────────────── LISTAR ─────────────────────── */
-  async get(req = request, res = response) {
-    try {
-      const { offset, limit, where, order } = filtros.obtenerFiltros({
-        busqueda: req.query.search,
-        modelo: Cliente,
-        pagina: req.query.page,
-      });
+async get(req = request, res = response) {
+  try {
+    const { offset, limit, where, order } = filtros.obtenerFiltros({
+      busqueda: req.query.search, // Usar query params, no body
+      modelo: Cliente,
+      pagina: req.query.page,
+    });
 
-      const all = req.query.all === 'true';
+    const all = req.query.all === 'true';
 
-      let queryOptions = {
-        where,
-        order,
-        attributes: ['id', 'nombre', 'telefono', 'avatar', 'usuarioID', 'fecha_nacimiento'],
-        include: {
-          model: Usuario,
-          attributes: ["id", "email", "estaVerificado"],
-        },
-      };
+    let queryOptions = {
+      where,
+      order,
+      attributes: ['id', 'nombre', 'telefono', 'avatar', 'usuarioID', 'fecha_nacimiento'],
+      include: {
+        model: Usuario,
+        attributes: ["id", "email", "estaVerificado"],
+      },
+      raw: false
+    };
 
-      let clientes;
-      let total;
+    let clientes;
+    let total;
 
-      if (all) {
-        clientes = await Cliente.findAll(queryOptions);
-        total = clientes.length;
-      } else {
-        queryOptions = { ...queryOptions, offset, limit };
-        clientes = await Cliente.findAll(queryOptions);
-        total = await Cliente.count({ where });
-      }
-
-      // Depuración: Verificar avatares
-      console.log('Clientes obtenidos:', clientes.map(c => ({
-        id: c.id,
-        nombre: c.nombre,
-        tieneAvatar: !!c.avatar,
-        avatarLength: c.avatar?.length || 0
-      })));
-
-      return res.json({ clientes, total });
-    } catch (error) {
-      console.error('Error al listar clientes:', error);
-      return res.status(400).json({ mensaje: error.message });
+    if (all) {
+      clientes = await Cliente.findAll(queryOptions);
+      total = clientes.length;
+    } else {
+      queryOptions = { ...queryOptions, offset, limit };
+      clientes = await Cliente.findAll(queryOptions);
+      total = await Cliente.count({ where });
     }
+
+    const clientesProcesados = clientes.map(cliente => {
+      const clienteData = cliente.get({ plain: true });
+        // Limpiar avatar si es inválido
+  let avatar = clienteData.avatar;
+  if (avatar && (typeof avatar !== 'string' || avatar.includes('undefined'))) {
+    avatar = null;
   }
+      return {
+        ...clienteData,
+        avatar: clienteData.avatar || null,
+        estaVerificado: clienteData.usuario?.estaVerificado || false,
+        email: clienteData.usuario?.email || ''
+      };
+    });
+
+    return res.json({ clientes: clientesProcesados, total });
+  } catch (error) {
+    console.error('Error al listar clientes:', error);
+    return res.status(400).json({ mensaje: error.message });
+  }
+}
 
   /* ─────────────────────── DETALLE ────────────────────── */
   async getById(req = request, res = response) {
@@ -84,172 +92,161 @@ class ClientesController {
   }
 
   /* ─────────────────────── CREAR ──────────────────────── */
-  async create(req = request, res = response) {
-    try {
-      const { email, password: plainPassword, avatarBase64 } = req.body;
+async create(req = request, res = response) {
+  try {
+    const { email, password: plainPassword, avatarBase64, fecha_nacimiento } = req.body;
 
-      // Validación extendida del avatar
-      if (avatarBase64) {
-        if (typeof avatarBase64 !== 'string') {
-          return res.status(400).json({ mensaje: "Formato de avatar inválido" });
-        }
-
-        const cleanAvatar = avatarBase64.trim();
-        
-        if (!cleanAvatar.startsWith('data:image/')) {
-          return res.status(400).json({ 
-            mensaje: "El avatar debe ser una imagen en formato base64",
-            formato_recibido: cleanAvatar.substring(0, 50) + '...'
-          });
-        }
-
-        if (cleanAvatar.length > 8 * 1024 * 1024) {
-          return res.status(400).json({ mensaje: "El avatar es demasiado grande (máximo 8MB)" });
-        }
-      }
-
-      // Validar email duplicado
-      const usuarioYaExiste = await Usuario.findOne({ where: { email } });
-      if (usuarioYaExiste) {
-        return res.status(400).json({ mensaje: "Este email ya se encuentra registrado" });
-      }
-
-      // Obtener rol Cliente
-      const clienteRol = await Rol.findOne({ where: { nombre: "Cliente" } });
-      if (!clienteRol) {
-        return res.status(400).json({ mensaje: "No se encontró el rol de Cliente" });
-      }
-
-      // Crear usuario
-      const password = await passwordUtils.encrypt(plainPassword);
-      const usuario = await Usuario.create({
-        ...req.body,
-        password,
-        rolID: clienteRol.id,
-      });
-
-      // Generar código de verificación
-      const codigo = customAlphabet("0123456789", 6)();
-      await CodigosVerificacion.create({ usuarioID: usuario.id, codigo });
-
-      // Crear cliente con el avatar (limpio si existe)
-      const avatarClean = avatarBase64 ? avatarBase64.trim() : null;
-      const cliente = await Cliente.create({
-        ...req.body,
-        usuarioID: usuario.id,
-        avatar: avatarClean
-      });
-
-      // Verificar que se guardó correctamente
-      const clienteCreado = await Cliente.findByPk(cliente.id, {
-        attributes: ['id', 'nombre', 'avatar']
-      });
-
-      console.log('Cliente creado en BD:', {
-        id: clienteCreado.id,
-        nombre: clienteCreado.nombre,
-        tieneAvatar: !!clienteCreado.avatar,
-        avatarLength: clienteCreado.avatar?.length || 0
-      });
-
-      // Enviar email de verificación
-      const verificationLink = `${FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}&code=${codigo}`;
-      await sendEmail({
-        to: email,
-        subject: "Verifica tu cuenta de cliente",
-        html: correos.envioCredenciales({
-          codigo,
-          email,
-          password: plainPassword,
-          verificationLink,
-        }),
-      });
-
-      return res.status(201).json({
-        mensaje: "Cliente registrado correctamente",
-        cliente: {
-          ...cliente.toJSON(),
-          avatar: clienteCreado.avatar, // Forzar envío del avatar
-          usuario: {
-            email: usuario.email,
-            estaVerificado: usuario.estaVerificado
-          }
-        }
-      });
-    } catch (error) {
-      console.error('Error al crear cliente:', error);
-      return res.status(500).json({ 
-        mensaje: "Error interno del servidor",
-        detalle: error.message 
-      });
+        // Validar fecha de nacimiento
+    if (!fecha_nacimiento) {
+      return res.status(400).json({ mensaje: "La fecha de nacimiento es obligatoria" });
     }
+
+    // Validación extendida del avatar
+    if (avatarBase64) {
+      if (typeof avatarBase64 !== 'string') {
+        return res.status(400).json({ mensaje: "Formato de avatar inválido" });
+      }
+
+      const cleanAvatar = avatarBase64.trim();
+      
+      if (!cleanAvatar.startsWith('data:image/')) {
+        return res.status(400).json({ 
+          mensaje: "El avatar debe ser una imagen en formato base64",
+          formato_recibido: cleanAvatar.substring(0, 50) + '...'
+        });
+      }
+
+      if (cleanAvatar.length > 8 * 1024 * 1024) {
+        return res.status(400).json({ mensaje: "El avatar es demasiado grande (máximo 8MB)" });
+      }
+    }
+
+    // Validar email duplicado
+    const usuarioYaExiste = await Usuario.findOne({ where: { email } });
+    if (usuarioYaExiste) {
+      return res.status(400).json({ mensaje: "Este email ya se encuentra registrado" });
+    }
+
+    // Obtener rol Cliente
+    const clienteRol = await Rol.findOne({ where: { nombre: "Cliente" } });
+    if (!clienteRol) {
+      return res.status(400).json({ mensaje: "No se encontró el rol de Cliente" });
+    }
+
+    // Crear usuario
+    const password = await passwordUtils.encrypt(plainPassword);
+    const usuario = await Usuario.create({
+      ...req.body,
+      password,
+      rolID: clienteRol.id,
+    });
+
+    // Generar código de verificación
+    const codigo = customAlphabet("0123456789", 6)();
+    await CodigosVerificacion.create({ usuarioID: usuario.id, codigo });
+
+    // Crear cliente con el avatar (limpio si existe)
+    const avatarClean = avatarBase64 ? avatarBase64.trim() : null;
+    const cliente = await Cliente.create({
+      ...req.body,
+      usuarioID: usuario.id,
+      avatar: avatarClean
+    });
+
+    // Obtener el cliente recién creado con el avatar
+    const clienteCreado = await Cliente.findByPk(cliente.id, {
+      attributes: ['id', 'nombre', 'telefono', 'avatar', 'fecha_nacimiento'],
+      include: {
+        model: Usuario,
+        attributes: ["id", "email", "estaVerificado"],
+      }
+    });
+
+    // Enviar email de verificación
+    const verificationLink = `${FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}&code=${codigo}`;
+    await sendEmail({
+      to: email,
+      subject: "Verifica tu cuenta de cliente",
+      html: correos.envioCredenciales({
+        codigo,
+        email,
+        password: plainPassword,
+        verificationLink,
+      }),
+    });
+
+    return res.status(201).json({
+      mensaje: "Cliente registrado correctamente",
+      cliente: clienteCreado
+    });
+  } catch (error) {
+    console.error('Error al crear cliente:', error);
+    return res.status(500).json({ 
+      mensaje: "Error interno del servidor",
+      detalle: error.message 
+    });
   }
+}
 
   /* ─────────────────────── ACTUALIZAR ─────────────────── */
-  async update(req = request, res = response) {
-    try {
-      const cliente = await Cliente.findByPk(req.params.id, {
-        include: { model: Usuario },
-      });
-      
-      if (!cliente) {
-        return res.status(404).json({ mensaje: "Cliente no encontrado" });
-      }
-
-      // Manejo del avatar
-      const { avatarBase64, ...rest } = req.body;
-
-      if (avatarBase64) {
-        if (typeof avatarBase64 !== 'string') {
-          return res.status(400).json({ mensaje: "Formato de avatar inválido" });
-        }
-
-        const cleanAvatar = avatarBase64.trim();
-        
-        if (!cleanAvatar.startsWith('data:image/')) {
-          return res.status(400).json({ 
-            mensaje: "El avatar debe ser una imagen en formato base64",
-            formato_recibido: cleanAvatar.substring(0, 50) + '...'
-          });
-        }
-
-        if (cleanAvatar.length > 8 * 1024 * 1024) {
-          return res.status(400).json({ mensaje: "El avatar es demasiado grande (máximo 8MB)" });
-        }
-
-        rest.avatar = cleanAvatar;
-      }
-
-      const clienteActualizado = await cliente.update(rest);
-      
-      if (req.body.email && cliente.usuario) {
-        await cliente.usuario.update({ email: req.body.email });
-      }
-
-      // Verificar actualización
-      const clienteActualizadoConAvatar = await Cliente.findByPk(cliente.id, {
-        attributes: ['id', 'nombre', 'avatar']
-      });
-
-      console.log('Cliente actualizado:', {
-        id: clienteActualizadoConAvatar.id,
-        tieneAvatar: !!clienteActualizadoConAvatar.avatar,
-        avatarLength: clienteActualizadoConAvatar.avatar?.length || 0
-      });
-
-      return res.json({
-        mensaje: "Cliente actualizado correctamente",
-        cliente: {
-          ...clienteActualizado.toJSON(),
-          avatar: clienteActualizadoConAvatar.avatar,
-          usuario: cliente.usuario,
-        },
-      });
-    } catch (error) {
-      console.error('Error al actualizar cliente:', error);
-      return res.status(400).json({ mensaje: error.message });
+// En clientes.controller.js
+async update(req = request, res = response) {
+  try {
+    const cliente = await Cliente.findByPk(req.params.id, {
+      include: { model: Usuario },
+    });
+    
+    if (!cliente) {
+      return res.status(404).json({ mensaje: "Cliente no encontrado" });
     }
+
+    // Manejo del avatar
+    const { avatarBase64, ...rest } = req.body;
+
+    if (avatarBase64) {
+      if (typeof avatarBase64 !== 'string') {
+        return res.status(400).json({ mensaje: "Formato de avatar inválido" });
+      }
+
+      const cleanAvatar = avatarBase64.trim();
+      
+      if (!cleanAvatar.startsWith('data:image/')) {
+        return res.status(400).json({ 
+          mensaje: "El avatar debe ser una imagen en formato base64",
+          formato_recibido: cleanAvatar.substring(0, 50) + '...'
+        });
+      }
+
+      rest.avatar = cleanAvatar;
+    }
+
+    const clienteActualizado = await cliente.update(rest);
+    
+    if (req.body.email && cliente.usuario) {
+      await cliente.usuario.update({ email: req.body.email });
+    }
+
+    // Obtener el cliente actualizado con el avatar
+    const clienteConAvatar = await Cliente.findByPk(cliente.id, {
+      attributes: ['id', 'nombre', 'avatar'],
+      include: {
+        model: Usuario,
+        attributes: ["id", "email", "estaVerificado"],
+      }
+    });
+
+    return res.json({
+      mensaje: "Cliente actualizado correctamente",
+      cliente: {
+        ...clienteConAvatar.toJSON(),
+        usuario: clienteConAvatar.usuario,
+      },
+    });
+  } catch (error) {
+    console.error('Error al actualizar cliente:', error);
+    return res.status(400).json({ mensaje: error.message });
   }
+}
 
 
   /* ────────────────── ACTUALIZAR POR EMAIL ────────────── */
