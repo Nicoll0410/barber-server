@@ -6,6 +6,7 @@ import { filtros } from "../../utils/filtros.util.js";
 import { correos } from "../../utils/correos.util.js";
 import { customAlphabet } from "nanoid";
 import { CodigosVerificacion } from "./codigos_verificacion.model.js";
+import { CodigosRecuperarVerificacion } from "./codigos_recuperar_password.model.js"
 import { sendEmail } from "../../utils/send-email.util.js";
 import { Cliente } from "../clientes/clientes.model.js";
 import { Barbero } from "../barberos/barberos.model.js";
@@ -141,7 +142,7 @@ class UsuarioController {
                 mensaje: error.message
             });
         }
-    }
+    }       
 
 // Modificar el método create para enviar el código de verificación
 
@@ -312,6 +313,153 @@ async create(req = request, res = response) {
             return res.status(400).json({
                 mensaje: error.message
             })
+        }
+    }
+
+        // NUEVAS FUNCIONES PARA RECUPERACIÓN DE CONTRASEÑA
+    async solicitarRecuperacionPassword(req = request, res = response) {
+        try {
+            const { email } = req.body;
+            
+            // Verificar si el usuario existe
+            const usuario = await Usuario.findOne({ where: { email } });
+            if (!usuario) {
+                // Por seguridad, no revelamos si el email existe o no
+                return res.status(200).json({ 
+                    success: true, 
+                    message: 'Si el email existe en nuestro sistema, recibirás un código de recuperación' 
+                });
+            }
+
+            // Generar código de 6 dígitos
+            const codigo = (customAlphabet("0123456789", 6))();
+            const expiracion = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos
+
+            // Eliminar códigos previos
+            await CodigosRecuperarVerificacion.destroy({ 
+                where: { usuarioID: usuario.id } 
+            });
+
+            // Guardar nuevo código
+            await CodigosRecuperarVerificacion.create({
+                usuarioID: usuario.id,
+                codigo,
+                expiracion
+            });
+
+            // Enviar email con el código
+            await sendEmail({ 
+                to: email, 
+                subject: "Recuperación de contraseña - NY Barber", 
+                html: correos.recuperarPassword({ codigo, email }) 
+            });
+
+            return res.status(200).json({ 
+                success: true, 
+                message: 'Si el email existe en nuestro sistema, recibirás un código de recuperación' 
+            });
+        } catch (error) {
+            console.error('Error en solicitarRecuperacionPassword:', error);
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Error interno del servidor' 
+            });
+        }
+    }
+
+    async verificarCodigoRecuperacion(req = request, res = response) {
+        try {
+            const { email, codigo } = req.body;
+            
+            // Buscar usuario
+            const usuario = await Usuario.findOne({ where: { email } });
+            if (!usuario) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Código inválido' 
+                });
+            }
+
+            // Buscar código de recuperación válido
+            const codigoRecuperacion = await CodigosRecuperarVerificacion.findOne({
+                where: {
+                    usuarioID: usuario.id,
+                    codigo,
+                    expiracion: { [Op.gt]: new Date() }
+                }
+            });
+
+            if (!codigoRecuperacion) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Código inválido o expirado' 
+                });
+            }
+
+            return res.status(200).json({ 
+                success: true, 
+                message: 'Código verificado correctamente' 
+            });
+        } catch (error) {
+            console.error('Error en verificarCodigoRecuperacion:', error);
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Error interno del servidor' 
+            });
+        }
+    }
+
+    async cambiarPasswordConCodigo(req = request, res = response) {
+        try {
+            const { email, codigo, nuevaPassword } = req.body;
+            
+            // Buscar usuario
+            const usuario = await Usuario.findOne({ where: { email } });
+            if (!usuario) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Usuario no encontrado' 
+                });
+            }
+
+            // Verificar el código primero
+            const codigoRecuperacion = await CodigosRecuperarVerificacion.findOne({
+                where: {
+                    usuarioID: usuario.id,
+                    codigo,
+                    expiracion: { [Op.gt]: new Date() }
+                }
+            });
+
+            if (!codigoRecuperacion) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Código inválido o expirado' 
+                });
+            }
+
+            // Cambiar la contraseña
+            const hashedPassword = await passwordUtils.encrypt(nuevaPassword);
+            await Usuario.update(
+                { password: hashedPassword },
+                { where: { id: usuario.id } }
+            );
+
+            // Eliminar el código usado
+            await CodigosRecuperarVerificacion.destroy({
+                where: { id: codigoRecuperacion.id }
+            });
+
+            return res.status(200).json({ 
+                success: true, 
+                message: 'Contraseña cambiada exitosamente' 
+            });
+        } catch (error) {
+            console.error('Error en cambiarPasswordConCodigo:', error);
+            return res.status(500).json({ 
+                success: false, 
+                message: 'Error interno del servidor' 
+            });
         }
     }
 }

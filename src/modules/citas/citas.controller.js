@@ -641,18 +641,21 @@ class CitasController {
       const citaCreada = await Cita.create(nuevaCita, { transaction: t });
 
       // Crear notificación si el barbero tiene usuario asociado
-      if (barbero.usuario) {
-        try {
-          await notificationsController.createAppointmentNotification(
+if (barbero.usuario) {
+    try {
+        console.log("🔔 Intentando crear notificación para barbero:", barbero.usuario.id);
+        await notificationsController.createAppointmentNotification(
             citaCreada.id,
             "creacion",
-            { transaction: t }
-          );
-        } catch (notifError) {
-          console.error("Error al crear notificación:", notifError);
-          // No hacemos rollback por un error en la notificación
-        }
-      }
+            { transaction: t } // 👈 Asegúrate de pasar la transacción
+        );
+    } catch (notifError) {
+        console.error("❌ Error al crear notificación:", notifError);
+        // No hacemos rollback por un error en la notificación
+    }
+} else {
+    console.log("⚠️ Barbero no tiene usuario asociado, no se crea notificación");
+}
 
       await t.commit();
 

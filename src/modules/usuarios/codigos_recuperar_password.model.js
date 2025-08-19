@@ -16,6 +16,10 @@ CodigosRecuperarVerificacion.init({
     codigo:{
         type: DataTypes.STRING,
         allowNull: false
+    },
+        expiracion: {
+        type: DataTypes.DATE,
+        allowNull: false
     }
 }, {
     sequelize,

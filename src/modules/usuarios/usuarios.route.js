@@ -19,6 +19,24 @@ const actualizarPassword = [
     validaciones.estaVacio("password", "La contraseña debe ser obligatoria")
 ]
 
+const solicitarRecuperacionMiddlewares = [
+    validaciones.estaVacio("email", "El email debe de ser obligatorio"),
+    validaciones.esEmail("email", "El email no tiene el formato correcto")
+]
+
+const verificarCodigoMiddlewares = [
+    validaciones.estaVacio("email", "El email debe de ser obligatorio"),
+    validaciones.esEmail("email", "El email no tiene el formato correcto"),
+    validaciones.estaVacio("codigo", "El código debe de ser obligatorio")
+]
+
+const cambiarPasswordCodigoMiddlewares = [
+    validaciones.estaVacio("email", "El email debe de ser obligatorio"),
+    validaciones.esEmail("email", "El email no tiene el formato correcto"),
+    validaciones.estaVacio("codigo", "El código debe de ser obligatorio"),
+    validaciones.estaVacio("nuevaPassword", "La nueva contraseña debe de ser obligatoria")
+]
+
 export const usuarioRouter = Router()
 
 usuarioRouter.get("/", usuarioController.get)
@@ -31,3 +49,8 @@ usuarioRouter.post("/resend-email", reenvioCorreoMiddlewares,usuarioController.r
 usuarioRouter.delete("/:id", usuarioController.delete)
 usuarioRouter.get("/user-has-completed-signup", usuarioController.userHasCompletedSignup)
 usuarioRouter.post("/complete-signup", usuarioController.completeSignup)
+
+// NUEVAS RUTAS PARA RECUPERACIÓN DE CONTRASEÑA
+usuarioRouter.post("/solicitar-recuperacion", solicitarRecuperacionMiddlewares, usuarioController.solicitarRecuperacionPassword)
+usuarioRouter.post("/verificar-codigo", verificarCodigoMiddlewares, usuarioController.verificarCodigoRecuperacion)
+usuarioRouter.post("/cambiar-password-codigo", cambiarPasswordCodigoMiddlewares, usuarioController.cambiarPasswordConCodigo)
