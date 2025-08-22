@@ -176,13 +176,14 @@ async create(req = request, res = response) {
 
 
     // Obtener el cliente recién creado con el avatar
-    const clienteCreado = await Cliente.findByPk(cliente.id, {
-      attributes: ['id', 'nombre', 'telefono', 'avatar', 'fecha_nacimiento'],
-      include: {
-        model: Usuario,
-        attributes: ["id", "email", "estaVerificado"],
-      }
-    });
+// Obtener el cliente recién creado con TODOS los atributos
+const clienteCreado = await Cliente.findByPk(cliente.id, {
+  attributes: ['id', 'nombre', 'telefono', 'avatar', 'usuarioID', 'fecha_nacimiento'],
+  include: {
+    model: Usuario,
+    attributes: ["id", "email", "estaVerificado"],
+  }
+});
 
 
     // Enviar email de verificación
@@ -258,13 +259,14 @@ async update(req = request, res = response) {
 
 
     // Obtener el cliente actualizado con el avatar
-    const clienteConAvatar = await Cliente.findByPk(cliente.id, {
-      attributes: ['id', 'nombre', 'avatar'],
-      include: {
-        model: Usuario,
-        attributes: ["id", "email", "estaVerificado"],
-      }
-    });
+// Obtener el cliente actualizado con TODOS los atributos
+const clienteConAvatar = await Cliente.findByPk(cliente.id, {
+  attributes: ['id', 'nombre', 'telefono', 'avatar', 'usuarioID', 'fecha_nacimiento'],
+  include: {
+    model: Usuario,
+    attributes: ["id", "email", "estaVerificado"],
+  }
+});
 
 
     return res.json({
