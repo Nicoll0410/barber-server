@@ -215,7 +215,7 @@ const clienteCreado = await Cliente.findByPk(cliente.id, {
 
 
   /* ─────────────────────── ACTUALIZAR ─────────────────── */
-// En clientes.controller.js
+// En clientes.controller.js - método update
 async update(req = request, res = response) {
   try {
     const cliente = await Cliente.findByPk(req.params.id, {
@@ -226,64 +226,55 @@ async update(req = request, res = response) {
       return res.status(404).json({ mensaje: "Cliente no encontrado" });
     }
 
-
-    // Manejo del avatar
+    // Manejo del avatar - procesar avatarBase64 si existe
     const { avatarBase64, ...rest } = req.body;
+    let avatarActualizado = cliente.avatar;
 
-
-    if (avatarBase64) {
-      if (typeof avatarBase64 !== 'string') {
-        return res.status(400).json({ mensaje: "Formato de avatar inválido" });
-      }
-
-
+    if (avatarBase64 && typeof avatarBase64 === 'string') {
       const cleanAvatar = avatarBase64.trim();
      
-      if (!cleanAvatar.startsWith('data:image/')) {
+      // Validar que sea una imagen base64 válida
+      if (cleanAvatar.startsWith('data:image/')) {
+        avatarActualizado = cleanAvatar;
+      } else {
         return res.status(400).json({
-          mensaje: "El avatar debe ser una imagen en formato base64",
-          formato_recibido: cleanAvatar.substring(0, 50) + '...'
+          mensaje: "Formato de avatar inválido. Debe ser una imagen en base64",
         });
       }
-
-
-      rest.avatar = cleanAvatar;
     }
 
-
-    const clienteActualizado = await cliente.update(rest);
+    // Actualizar cliente incluyendo el avatar
+    await cliente.update({
+      ...rest,
+      avatar: avatarActualizado
+    });
    
+    // Actualizar email si se proporcionó
     if (req.body.email && cliente.usuario) {
       await cliente.usuario.update({ email: req.body.email });
     }
 
-
-    // Obtener el cliente actualizado con el avatar
-// Obtener el cliente actualizado con TODOS los atributos
-const clienteConAvatar = await Cliente.findByPk(cliente.id, {
-  attributes: ['id', 'nombre', 'telefono', 'avatar', 'usuarioID', 'fecha_nacimiento'],
-  include: {
-    model: Usuario,
-    attributes: ["id", "email", "estaVerificado"],
-  }
-});
-
+    // Obtener el cliente actualizado con todas las relaciones
+    const clienteActualizado = await Cliente.findByPk(cliente.id, {
+      attributes: ['id', 'nombre', 'telefono', 'avatar', 'usuarioID', 'fecha_nacimiento'],
+      include: {
+        model: Usuario,
+        attributes: ["id", "email", "estaVerificado"],
+      }
+    });
 
     return res.json({
       mensaje: "Cliente actualizado correctamente",
-      cliente: {
-        ...clienteConAvatar.toJSON(),
-        usuario: clienteConAvatar.usuario,
-      },
+      cliente: clienteActualizado
     });
   } catch (error) {
     console.error('Error al actualizar cliente:', error);
-    return res.status(400).json({ mensaje: error.message });
+    return res.status(400).json({ 
+      mensaje: "Error interno del servidor",
+      error: error.message 
+    });
   }
 }
-
-
-
 
   /* ────────────────── ACTUALIZAR POR EMAIL ────────────── */
   async updateByEmail(req = request, res = response) {
