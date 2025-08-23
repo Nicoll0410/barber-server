@@ -882,11 +882,20 @@ if (barbero.usuario) {
     }
   }
 
- async cancelDate(req = request, res = response) {
+async cancelDate(req = request, res = response) {
   const t = await sequelize.transaction();
   try {
     const { id } = req.params;
-    const cita = await Cita.findByPk(id, { transaction: t });
+    const cita = await Cita.findByPk(id, { 
+      transaction: t,
+      include: [
+        {
+          model: Barbero,
+          as: "barbero",
+          include: [{ model: Usuario, as: "usuario" }]
+        }
+      ]
+    });
     
     if (!cita) {
       await t.rollback();
@@ -898,6 +907,17 @@ if (barbero.usuario) {
       await t.rollback();
       return res.status(400).json({ 
         mensaje: `No se puede cancelar una cita en estado ${cita.estado}` 
+      });
+    }
+
+    // Verificar si la cita ya pasó
+    const ahora = new Date();
+    const fechaCita = new Date(`${cita.fecha}T${cita.hora}`);
+    
+    if (fechaCita < ahora) {
+      await t.rollback();
+      return res.status(400).json({ 
+        mensaje: "No se puede cancelar una cita que ya pasó" 
       });
     }
 
@@ -918,14 +938,16 @@ if (barbero.usuario) {
     await t.commit();
 
     return res.json({
-      mensaje: "Cita cancelada correctamente",
+      mensaje: "Cita cancelada correctamente. El horario ahora está disponible.",
       cita,
     });
 
   } catch (error) {
     await t.rollback();
-    return res.status(400).json({
-      mensaje: error.message,
+    console.error("Error en cancelDate:", error);
+    return res.status(500).json({
+      mensaje: "Error interno al cancelar la cita",
+      error: process.env.NODE_ENV === "development" ? error.message : null,
     });
   }
 }

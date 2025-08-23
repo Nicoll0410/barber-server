@@ -122,6 +122,7 @@ Cita.verificarDisponibilidad = async function (barberoID, fecha, hora, duracionM
     where: {
       barberoID,
       fecha,
+      estado: { [Op.notIn]: ["Cancelada", "Expirada"] }, // ← EXCLUIR CITAS CANCELADAS/EXPIRADAS
       [Op.or]: [
         {
           hora: {
