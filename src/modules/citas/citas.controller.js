@@ -692,6 +692,51 @@ class CitasController {
         );
       }
 
+        // ENVÍO DE EMAIL AL BARBERO - AÑADE ESTE BLOQUE
+    try {
+      // Obtener información completa para el email
+      const barberoConEmail = await Barbero.findByPk(req.body.barberoID, {
+        include: [{ model: Usuario, as: "usuario" }],
+        transaction: t
+      });
+      
+      const servicioInfo = await Servicio.findByPk(req.body.servicioID, {
+        transaction: t
+      });
+      
+      let clienteNombre = "";
+      if (req.body.pacienteID) {
+        const clienteInfo = await Cliente.findByPk(req.body.pacienteID, {
+          transaction: t
+        });
+        clienteNombre = clienteInfo.nombre;
+      } else {
+        clienteNombre = req.body.pacienteTemporalNombre;
+      }
+
+      if (barberoConEmail && barberoConEmail.usuario && barberoConEmail.usuario.email) {
+        const fechaHora = new Date(`${req.body.fecha}T${hora}`);
+        
+        const emailContent = correos.notificacionCitaBarbero({
+          tipo: 'creacion',
+          cliente_nombre: clienteNombre,
+          fecha_hora: fechaHora,
+          servicio_nombre: servicioInfo.nombre
+        });
+        
+        await sendEmail({
+          to: barberoConEmail.usuario.email,
+          subject: 'Nueva cita agendada - Barbería',
+          html: emailContent
+        });
+        
+        console.log('📧 Email de notificación enviado al barbero');
+      }
+    } catch (emailError) {
+      console.error('❌ Error al enviar email de notificación:', emailError);
+      // No hacemos rollback por error en el email
+    }
+
       await t.commit();
 
       return res.status(201).json({
@@ -969,6 +1014,40 @@ class CitasController {
           notifError
         );
       }
+          // ENVÍO DE EMAIL AL BARBERO - AÑADE ESTE BLOQUE
+    try {
+      let clienteNombre = "";
+      if (cita.pacienteID) {
+        clienteNombre = cita.cliente ? cita.cliente.nombre : "Cliente";
+      } else {
+        clienteNombre = cita.pacienteTemporalNombre || "Cliente temporal";
+      }
+
+      if (cita.barbero && cita.barbero.usuario && cita.barbero.usuario.email) {
+        const fechaHora = new Date(`${cita.fecha}T${cita.hora}`);
+        const motivo = req.body.motivo || "No especificado";
+        
+        const emailContent = correos.notificacionCitaBarbero({
+          tipo: 'cancelacion',
+          cliente_nombre: clienteNombre,
+          fecha_hora: fechaHora,
+          servicio_nombre: cita.servicio ? cita.servicio.nombre : "Servicio",
+          motivo_cancelacion: motivo
+        });
+        
+        await sendEmail({
+          to: cita.barbero.usuario.email,
+          subject: 'Cita cancelada - Barbería',
+          html: emailContent
+        });
+        
+        console.log('📧 Email de cancelación enviado al barbero');
+      }
+    } catch (emailError) {
+      console.error('❌ Error al enviar email de cancelación:', emailError);
+      // No hacemos rollback por error en el email
+    }
+
 
       await t.commit();
 

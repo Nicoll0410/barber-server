@@ -134,6 +134,65 @@ envioCredenciales({ codigo, email, password, verificationLink }) {
       </table>
     </div>`;
   }
+    /* ╔══════════════════════════════════════════════╗
+     ║ 5. NOTIFICACIONES DE CITAS PARA BARBEROS      ║
+     ╚══════════════════════════════════════════════╝ */
+  notificacionCitaBarbero({ tipo, cliente_nombre, fecha_hora, servicio_nombre, motivo_cancelacion }) {
+    const fechaFormateada = format(fecha_hora, "d 'de' MMMM 'de' yyyy", { locale: es });
+    const horaFormateada = format(fecha_hora, "hh:mm a", { locale: es });
+    
+    if (tipo === 'creacion') {
+      return `
+      <div style="font-family:Nunito,Arial,sans-serif;background:#f4f4f4;padding:40px 0;">
+        <table align="center" cellpadding="0" cellspacing="0" style="max-width:500px;background:#ffffff;padding:32px 24px;border-radius:8px;">
+          <tr>
+            <td style="text-align:center;padding:20px;">
+              <img src="https://i.postimg.cc/SRV9NNdc/new-York-Barber.jpg" alt="Logo" width="200">
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px;">
+              <h2 style="font-size:24px;margin:0 0 10px;">Nueva cita programada</h2>
+              <p style="margin:10px 0;">Se ha agendado una nueva cita con los siguientes detalles:</p>
+              <ul style="margin:10px 0;padding-left:20px;">
+                <li><strong>Cliente:</strong> ${cliente_nombre}</li>
+                <li><strong>Fecha:</strong> ${fechaFormateada}</li>
+                <li><strong>Hora:</strong> ${horaFormateada}</li>
+                <li><strong>Servicio:</strong> ${servicio_nombre}</li>
+              </ul>
+              <p style="margin:10px 0;">Por favor, revisa tu agenda para confirmar disponibilidad.</p>
+              <p style="margin:10px 0;">Gracias,<br>El equipo de New York Barber</p>
+            </td>
+          </tr>
+        </table>
+      </div>`;
+    } else if (tipo === 'cancelacion') {
+      return `
+      <div style="font-family:Nunito,Arial,sans-serif;background:#f4f4f4;padding:40px 0;">
+        <table align="center" cellpadding="0" cellspacing="0" style="max-width:500px;background:#ffffff;padding:32px 24px;border-radius:8px;">
+          <tr>
+            <td style="text-align:center;padding:20px;">
+              <img src="https://i.postimg.cc/SRV9NNdc/new-York-Barber.jpg" alt="Logo" width="200">
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px;">
+              <h2 style="font-size:24px;margin:0 0 10px;">Cita cancelada</h2>
+              <p style="margin:10px 0;">Se ha cancelado una cita con los siguientes detalles:</p>
+              <ul style="margin:10px 0;padding-left:20px;">
+                <li><strong>Cliente:</strong> ${cliente_nombre}</li>
+                <li><strong>Fecha:</strong> ${fechaFormateada}</li>
+                <li><strong>Hora:</strong> ${horaFormateada}</li>
+                <li><strong>Servicio:</strong> ${servicio_nombre}</li>
+                <li><strong>Motivo:</strong> ${motivo_cancelacion || 'No especificado'}</li>
+              </ul>
+              <p style="margin:10px 0;">Gracias,<br>El equipo de New York Barber</p>
+            </td>
+          </tr>
+        </table>
+      </div>`;
+    }
+  }
 }
 
 export const correos = new Correos();
