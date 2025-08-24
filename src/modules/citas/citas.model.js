@@ -94,6 +94,11 @@ Cita.init(
     modelName: "cita",
     tableName: "cita",
     hooks: {
+        beforeCreate: (cita) => {
+    if (cita.pacienteID === null) {
+      cita.pacienteID = undefined; // Sequelize no incluirá el campo
+    }
+    },
       beforeValidate: (cita) => {
         if (cita.isNewRecord) {
           cita.estado = "Confirmada";

@@ -82,10 +82,18 @@ class CitasController {
 
       const queryOptions = {
         order: [["fecha", "DESC"]],
-              where: { 
-                [Op.or]: whereConditions,
-                  estado: { [Op.in]: ["Pendiente", "Confirmada", "Completa", "Expirada", "Cancelada"] }
-              },
+        where: {
+          [Op.or]: whereConditions,
+          estado: {
+            [Op.in]: [
+              "Pendiente",
+              "Confirmada",
+              "Completa",
+              "Expirada",
+              "Cancelada",
+            ],
+          },
+        },
         include: [
           {
             model: Servicio,
@@ -475,7 +483,7 @@ class CitasController {
       });
     }
   }
-  
+
   async create(req = request, res = response) {
     const t = await sequelize.transaction();
     try {
@@ -522,11 +530,20 @@ class CitasController {
         });
       }
 
-      // Validar cliente o cliente temporal
+      // Validar cliente o cliente temporal - CORREGIDO
       if (!req.body.pacienteID && !req.body.pacienteTemporalNombre) {
         await t.rollback();
         return res.status(400).json({
           mensaje: "Se requiere pacienteID o pacienteTemporalNombre",
+        });
+      }
+
+      // Si es cliente temporal, NO debe tener pacienteID
+      if (req.body.pacienteTemporalNombre && req.body.pacienteID) {
+        await t.rollback();
+        return res.status(400).json({
+          mensaje:
+            "No se puede enviar pacienteID y pacienteTemporalNombre simultáneamente",
         });
       }
 
@@ -600,7 +617,7 @@ class CitasController {
         });
       }
 
-      // Preparar datos de la cita
+      // Preparar datos de la cita - CORREGIDO
       const nuevaCita = {
         servicioID: req.body.servicioID,
         barberoID: req.body.barberoID,
@@ -617,7 +634,7 @@ class CitasController {
         direccion: req.body.direccion || "En barbería",
       };
 
-      // Asignar cliente
+      // Asignar cliente - CORREGIDO
       if (req.body.pacienteID) {
         // Verificar que el cliente existe
         const cliente = await Cliente.findByPk(req.body.pacienteID, {
@@ -632,6 +649,7 @@ class CitasController {
         }
         nuevaCita.pacienteID = req.body.pacienteID;
       } else {
+        // Para clientes temporales, NO establecer pacienteID
         nuevaCita.pacienteTemporalNombre =
           req.body.pacienteTemporalNombre.trim();
         if (req.body.pacienteTemporalTelefono) {
@@ -640,25 +658,39 @@ class CitasController {
         }
       }
 
-      // Crear la cita
-      const citaCreada = await Cita.create(nuevaCita, { transaction: t });
+      // CORRECCIÓN: Remover pacienteID si es undefined/null
+      const datosFinales = { ...nuevaCita };
+      if (
+        datosFinales.pacienteID === null ||
+        datosFinales.pacienteID === undefined
+      ) {
+        delete datosFinales.pacienteID;
+      }
+
+      // Crear la cita con los datos corregidos
+      const citaCreada = await Cita.create(datosFinales, { transaction: t });
 
       // Crear notificación si el barbero tiene usuario asociado
-if (barbero.usuario) {
-    try {
-        console.log("🔔 Intentando crear notificación para barbero:", barbero.usuario.id);
-        await notificationsController.createAppointmentNotification(
+      if (barbero.usuario) {
+        try {
+          console.log(
+            "🔔 Intentando crear notificación para barbero:",
+            barbero.usuario.id
+          );
+          await notificationsController.createAppointmentNotification(
             citaCreada.id,
             "creacion",
             { transaction: t } // 👈 Asegúrate de pasar la transacción
+          );
+        } catch (notifError) {
+          console.error("❌ Error al crear notificación:", notifError);
+          // No hacemos rollback por un error en la notificación
+        }
+      } else {
+        console.log(
+          "⚠️ Barbero no tiene usuario asociado, no se crea notificación"
         );
-    } catch (notifError) {
-        console.error("❌ Error al crear notificación:", notifError);
-        // No hacemos rollback por un error en la notificación
-    }
-} else {
-    console.log("⚠️ Barbero no tiene usuario asociado, no se crea notificación");
-}
+      }
 
       await t.commit();
 
@@ -882,75 +914,78 @@ if (barbero.usuario) {
     }
   }
 
-async cancelDate(req = request, res = response) {
-  const t = await sequelize.transaction();
-  try {
-    const { id } = req.params;
-    const cita = await Cita.findByPk(id, { 
-      transaction: t,
-      include: [
-        {
-          model: Barbero,
-          as: "barbero",
-          include: [{ model: Usuario, as: "usuario" }]
-        }
-      ]
-    });
-    
-    if (!cita) {
-      await t.rollback();
-      return res.status(404).json({ mensaje: "Cita no encontrada" });
-    }
-
-    // Verificar que la cita no esté ya completada o expirada
-    if (cita.estado === "Completa" || cita.estado === "Expirada") {
-      await t.rollback();
-      return res.status(400).json({ 
-        mensaje: `No se puede cancelar una cita en estado ${cita.estado}` 
-      });
-    }
-
-    // Verificar si la cita ya pasó
-    const ahora = new Date();
-    const fechaCita = new Date(`${cita.fecha}T${cita.hora}`);
-    
-    if (fechaCita < ahora) {
-      await t.rollback();
-      return res.status(400).json({ 
-        mensaje: "No se puede cancelar una cita que ya pasó" 
-      });
-    }
-
-    // Cambiar estado a cancelada
-    await cita.update({ estado: "Cancelada" }, { transaction: t });
-
-    // Enviar notificación de cancelación
+  async cancelDate(req = request, res = response) {
+    const t = await sequelize.transaction();
     try {
-      await notificationsController.createAppointmentNotification(
-        id,
-        "cancelacion",
-        { transaction: t }
-      );
-    } catch (notifError) {
-      console.error("Error al crear notificación de cancelación:", notifError);
+      const { id } = req.params;
+      const cita = await Cita.findByPk(id, {
+        transaction: t,
+        include: [
+          {
+            model: Barbero,
+            as: "barbero",
+            include: [{ model: Usuario, as: "usuario" }],
+          },
+        ],
+      });
+
+      if (!cita) {
+        await t.rollback();
+        return res.status(404).json({ mensaje: "Cita no encontrada" });
+      }
+
+      // Verificar que la cita no esté ya completada o expirada
+      if (cita.estado === "Completa" || cita.estado === "Expirada") {
+        await t.rollback();
+        return res.status(400).json({
+          mensaje: `No se puede cancelar una cita en estado ${cita.estado}`,
+        });
+      }
+
+      // Verificar si la cita ya pasó
+      const ahora = new Date();
+      const fechaCita = new Date(`${cita.fecha}T${cita.hora}`);
+
+      if (fechaCita < ahora) {
+        await t.rollback();
+        return res.status(400).json({
+          mensaje: "No se puede cancelar una cita que ya pasó",
+        });
+      }
+
+      // Cambiar estado a cancelada
+      await cita.update({ estado: "Cancelada" }, { transaction: t });
+
+      // Enviar notificación de cancelación
+      try {
+        await notificationsController.createAppointmentNotification(
+          id,
+          "cancelacion",
+          { transaction: t }
+        );
+      } catch (notifError) {
+        console.error(
+          "Error al crear notificación de cancelación:",
+          notifError
+        );
+      }
+
+      await t.commit();
+
+      return res.json({
+        mensaje:
+          "Cita cancelada correctamente. El horario ahora está disponible.",
+        cita,
+      });
+    } catch (error) {
+      await t.rollback();
+      console.error("Error en cancelDate:", error);
+      return res.status(500).json({
+        mensaje: "Error interno al cancelar la cita",
+        error: process.env.NODE_ENV === "development" ? error.message : null,
+      });
     }
-
-    await t.commit();
-
-    return res.json({
-      mensaje: "Cita cancelada correctamente. El horario ahora está disponible.",
-      cita,
-    });
-
-  } catch (error) {
-    await t.rollback();
-    console.error("Error en cancelDate:", error);
-    return res.status(500).json({
-      mensaje: "Error interno al cancelar la cita",
-      error: process.env.NODE_ENV === "development" ? error.message : null,
-    });
   }
-}
 
   // Marcar todas las notificaciones como leídas para un usuario
   async markAllAsRead(req = request, res = response) {

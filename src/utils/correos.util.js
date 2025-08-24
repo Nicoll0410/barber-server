@@ -18,7 +18,7 @@ confirmarIdentidad({ codigo, email, verificationLink }) {
   <table align="center" cellpadding="0" cellspacing="0" style="max-width:500px;background:#ffffff;padding:32px 24px;border-radius:8px;">
     <tr>
       <td style="text-align:center;padding:20px;">
-        <img src="https://i.postimg.cc/Pqq9p8Zp/new-York-Barber.jpg" alt="Logo" width="200">
+        <img src="https://i.postimg.cc/SRV9NNdc/new-York-Barber.jpg" alt="Logo" width="200">
       </td>
     </tr>
     <tr>
@@ -55,7 +55,7 @@ confirmarIdentidad({ codigo, email, verificationLink }) {
       <table align="center" cellpadding="0" cellspacing="0" style="max-width:500px;background:#ffffff;padding:32px 24px;border-radius:8px;">
         <tr>
           <td style="text-align:center;padding:20px;">
-            <img src="https://i.postimg.cc/Pqq9p8Zp/new-York-Barber.jpg" alt="Logo" width="200">
+            <img src="https://i.postimg.cc/SRV9NNdc/new-York-Barber.jpg" alt="Logo" width="200">
           </td>
         </tr>
         <tr>
@@ -81,7 +81,7 @@ envioCredenciales({ codigo, email, password, verificationLink }) {
   <table align="center" cellpadding="0" cellspacing="0" style="max-width:500px;background:#ffffff;padding:32px 24px;border-radius:8px;">
     <tr>
       <td style="text-align:center;padding:20px;">
-        <img src="https://i.postimg.cc/Pqq9p8Zp/new-York-Barber.jpg" alt="Logo" width="200">
+        <img src="https://i.postimg.cc/SRV9NNdc/new-York-Barber.jpg" alt="Logo" width="200">
       </td>
     </tr>
     <tr>
@@ -119,7 +119,7 @@ envioCredenciales({ codigo, email, password, verificationLink }) {
       <table align="center" cellpadding="0" cellspacing="0" style="max-width:500px;background:#ffffff;padding:32px 24px;border-radius:8px;">
         <tr>
           <td style="text-align:center;padding:20px;">
-            <img src="https://i.postimg.cc/Pqq9p8Zp/new-York-Barber.jpg" alt="Logo" width="200">
+            <img src="https://i.postimg.cc/SRV9NNdc/new-York-Barber.jpg" alt="Logo" width="200">
           </td>
         </tr>
         <tr>
