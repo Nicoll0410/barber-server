@@ -8,7 +8,7 @@ import { Barbero } from "../modules/barberos/barberos.model.js";
 import { Cliente } from "../modules/clientes/clientes.model.js";
 
 export class CitasAVentasJob {
-    static iniciar() {
+    static async iniciar() {
         // Job que se ejecuta cada 5 minutos
         cron.schedule('*/5 * * * *', async () => {
             try {
@@ -31,7 +31,7 @@ export class CitasAVentasJob {
                             {
                                 [Op.and]: [
                                     { fecha: fechaActual },
-                                    { horaFin: { [Op.lte]: horaActual } },
+                                    { hora: { [Op.lte]: horaActual } }, // Cambiado de horaFin a hora
                                 ],
                             },
                         ],
@@ -40,17 +40,17 @@ export class CitasAVentasJob {
                         {
                             model: Servicio,
                             as: 'servicio',
-                            attributes: ['nombre', 'precio']
+                            attributes: ['id', 'nombre', 'precio']
                         },
                         {
                             model: Barbero,
                             as: 'barbero',
-                            attributes: ['nombre']
+                            attributes: ['id', 'nombre']
                         },
                         {
                             model: Cliente,
                             as: 'cliente',
-                            attributes: ['nombre']
+                            attributes: ['id', 'nombre']
                         }
                     ]
                 });
@@ -59,24 +59,35 @@ export class CitasAVentasJob {
 
                 for (const cita of citasParaConvertir) {
                     try {
+                        // Verificar si ya existe una venta para esta cita
+                        const ventaExistente = await Venta.findOne({
+                            where: { citaID: cita.id }
+                        });
+
+                        if (ventaExistente) {
+                            console.log(`⚠️ Venta ya existe para cita ${cita.id}`);
+                            continue;
+                        }
+
                         // Crear la venta
                         const venta = await Venta.create({
                             citaID: cita.id,
-                            clienteID: cita.pacienteID,
+                            clienteID: cita.clienteID || cita.cliente?.id,
                             cliente_nombre: cita.cliente?.nombre || cita.pacienteTemporalNombre || 'Cliente no especificado',
-                            barberoID: cita.barberoID,
+                            barberoID: cita.barberoID || cita.barbero?.id,
                             barbero_nombre: cita.barbero?.nombre || 'Barbero no asignado',
-                            servicioID: cita.servicioID,
+                            servicioID: cita.servicioID || cita.servicio?.id,
                             servicio_nombre: cita.servicio?.nombre || 'Servicio no especificado',
                             servicio_precio: cita.servicio?.precio || cita.precio || 0,
                             fecha_cita: cita.fecha,
                             hora_cita: cita.hora,
                             total: (cita.servicio?.precio || cita.precio || 0),
+                            estado: 'Completada'
                         });
 
                         // Actualizar la cita
                         await cita.update({
-                            estado: 'ConvertidaVenta',
+                            estado: 'Completa', // Cambiado a 'Completa' para coincidir con el dashboard
                             ventaID: venta.id
                         });
 
@@ -90,6 +101,8 @@ export class CitasAVentasJob {
 
                 if (contador > 0) {
                     console.log(`📊 Se convirtieron ${contador} citas a ventas`);
+                } else {
+                    console.log('📊 No hay citas para convertir en este momento');
                 }
 
             } catch (error) {
