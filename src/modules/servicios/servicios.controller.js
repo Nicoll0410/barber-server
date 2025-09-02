@@ -45,39 +45,35 @@ class ServiciosController {
     }
   }
 
-/* ─────────────── Crear ─── ahora insumos son opcionales ─────────────── */
+/* ─────────────── Crear ─────────────── */
 async create(req = request, res = response) {
   try {
-    /* ───── Formatear duración CORREGIDO ───── */
-    function formatTimeToDatabase(timeString) {
-      // Convertir "00:30" o "1:30" a formato TIME "00:30:00"
-      const [hours, minutes] = timeString.split(':').map(Number);
-      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-    }
-
-    function formatTimeToDisplay(timeString) {
-      // Convertir "00:30:00" a texto "30 minutos" para mostrar
-      const [hours, minutes] = timeString.split(':').map(Number);
-      let formatted = "";
-      if (hours > 0) formatted += `${hours} hora${hours !== 1 ? "s" : ""}`;
-      if (minutes > 0) formatted += `${hours > 0 ? " y " : ""}${minutes} minuto${minutes !== 1 ? "s" : ""}`;
-      return formatted || "0 minutos";
+    // función auxiliar para asegurar formato TIME válido
+    function toTimeFormat(timeString) {
+      if (timeString.includes(":")) {
+        // ya viene como "HH:MM" o "HH:MM:SS"
+        const parts = timeString.split(":");
+        const hours = parts[0].padStart(2, "0");
+        const minutes = parts[1].padStart(2, "0");
+        const seconds = parts[2] ? parts[2].padStart(2, "0") : "00";
+        return `${hours}:${minutes}:${seconds}`;
+      }
+      throw new Error("Formato de duración inválido, usa HH:MM o HH:MM:SS");
     }
 
     /* ───── Validación de nombre único ───── */
     const existePorNombre = await Servicio.findOne({ where: { nombre: req.body.nombre } });
     if (existePorNombre) throw new Error("Ups, parece que ya existe un servicio con este nombre");
 
-    // ✅ CORREGIDO: Usar formato TIME para la base de datos
-    const duracionMaximaConvertido = formatTimeToDatabase(req.body.duracionMaxima);
-    // ✅ Mantener el formato original para mostrar
-    const duracionDisplay = formatTimeToDisplay(req.body.duracionMaxima);
+    /* ───── Convertir a formato TIME ───── */
+    const duracionMaxima = toTimeFormat(req.body.duracionMaxima);
+    const duracionMaximaConvertido = duracionMaxima; // mismo valor, TIME válido
 
     /* ───── Crear servicio ───── */
     const servicio = await Servicio.create({ 
       ...req.body, 
-      duracionMaximaConvertido, // Formato TIME: "00:30:00"
-      duracionMaxima: duracionDisplay // Formato texto: "30 minutos" 
+      duracionMaxima, 
+      duracionMaximaConvertido 
     });
 
     /* ───── Crear insumos SOLO si se enviaron ───── */
@@ -100,6 +96,7 @@ async create(req = request, res = response) {
   }
 }
 
+
 /* ─────────────── Actualizar (insumos opcionales) ─────────────── */
 async update(req = request, res = response) {
   try {
@@ -110,31 +107,32 @@ async update(req = request, res = response) {
     if (existePorNombre && existePorNombre.id !== req.params.id)
       throw new Error("Ups, parece que ya existe un servicio con este nombre");
 
-    /* ───── Formatear duración si se envía ───── */
-    let datosActualizados = { ...req.body };
-    
+    // función auxiliar para TIME
+    function toTimeFormat(timeString) {
+      if (!timeString) return null;
+      if (timeString.includes(":")) {
+        const parts = timeString.split(":");
+        const hours = parts[0].padStart(2, "0");
+        const minutes = parts[1].padStart(2, "0");
+        const seconds = parts[2] ? parts[2].padStart(2, "0") : "00";
+        return `${hours}:${minutes}:${seconds}`;
+      }
+      throw new Error("Formato de duración inválido, usa HH:MM o HH:MM:SS");
+    }
+
+    // convertir si vienen en el body
+    const updateData = {
+      ...req.body,
+    };
     if (req.body.duracionMaxima) {
-      function formatTimeToDatabase(timeString) {
-        const [hours, minutes] = timeString.split(':').map(Number);
-        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
-      }
-
-      function formatTimeToDisplay(timeString) {
-        const [hours, minutes] = timeString.split(':').map(Number);
-        let formatted = "";
-        if (hours > 0) formatted += `${hours} hora${hours !== 1 ? "s" : ""}`;
-        if (minutes > 0) formatted += `${hours > 0 ? " y " : ""}${minutes} minuto${minutes !== 1 ? "s" : ""}`;
-        return formatted || "0 minutos";
-      }
-
-      datosActualizados.duracionMaximaConvertido = formatTimeToDatabase(req.body.duracionMaxima);
-      datosActualizados.duracionMaxima = formatTimeToDisplay(req.body.duracionMaxima);
+      updateData.duracionMaxima = toTimeFormat(req.body.duracionMaxima);
+      updateData.duracionMaximaConvertido = updateData.duracionMaxima;
     }
 
     /* ───── Actualizar datos principales ───── */
-    const servicioActualizado = await servicioExiste.update(datosActualizados);
+    const servicioActualizado = await servicioExiste.update(updateData);
 
-    /* ───── Si se envía el array de insumos, se re‑sincroniza ───── */
+    /* ───── Si se envía el array de insumos, se re-sincroniza ───── */
     if (Array.isArray(req.body.insumos)) {
       await ServiciosPorInsumos.destroy({ where: { servicioID: req.params.id } });
 
@@ -155,6 +153,7 @@ async update(req = request, res = response) {
     return res.status(400).json({ mensaje: error.message });
   }
 }
+
 
   /* ─────────────── Eliminar ─────────────── */
   async delete(req = request, res = response) {
