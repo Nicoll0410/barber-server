@@ -750,106 +750,54 @@ if (barbero.usuario) {
     }
   }
 
-// citas.controller.js - Modificar createByPatient para usar transacción y notificaciones
-async createByPatient(req = request, res = response) {
-    const t = await sequelize.transaction();
+  async createByPatient(req = request, res = response) {
     try {
-        const authHeader = req.header("Authorization");
-        if (!authHeader)
-            throw new Error("¡Ups! Parece que no tienes una sesión activa");
-        if (!authHeader.startsWith("Bearer "))
-            throw new Error("Formato del token invalido");
+      const authHeader = req.header("Authorization");
+      if (!authHeader)
+        throw new Error("¡Ups! Parece que no tienes una sesión activa");
+      if (!authHeader.startsWith("Bearer "))
+        throw new Error("Formato del token invalido");
 
-        const token = authHeader.split(" ")[1];
-        const { email } = jwt.decode(token);
-        const usuario = await Usuario.findOne({ 
-            where: { email },
-            transaction: t
-        });
-        
-        const cliente = await Cliente.findOne({
-            where: { usuarioID: usuario.id },
-            transaction: t
-        });
+      const token = authHeader.split(" ")[1];
+      const { email } = jwt.decode(token);
+      const usuario = await Usuario.findOne({ where: { email } });
+      const cliente = await Cliente.findOne({
+        where: { usuarioID: usuario.id },
+      });
 
-        // Obtener servicio con transacción
-        const servicio = await Servicio.findByPk(req.body.servicioID, {
-            attributes: ["duracionMaxima"],
-            transaction: t
-        });
+      const { duracionMaxima } = await Servicio.findByPk(req.body.servicioID, {
+        attributes: ["duracionMaxima"],
+      });
 
-        if (!servicio) {
-            await t.rollback();
-            return res.status(404).json({ mensaje: "Servicio no encontrado" });
-        }
+      const horaObj = parse(req.body.hora.toUpperCase(), "h:mm a", new Date());
+      const [svcH, svcM, svcS] = duracionMaxima.split(":").map(Number);
+      const horaFinObj = add(horaObj, {
+        hours: svcH,
+        minutes: svcM,
+        seconds: svcS,
+      });
 
-        const horaObj = parse(req.body.hora.toUpperCase(), "h:mm a", new Date());
-        const [svcH, svcM, svcS] = servicio.duracionMaxima.split(":").map(Number);
-        const horaFinObj = add(horaObj, {
-            hours: svcH,
-            minutes: svcM,
-            seconds: svcS,
-        });
+      const hora = format(horaObj, "HH:mm:ss");
+      const horaFin = format(horaFinObj, "HH:mm:ss");
 
-        const hora = format(horaObj, "HH:mm:ss");
-        const horaFin = format(horaFinObj, "HH:mm:ss");
+      const cita = await Cita.create({
+        ...req.body,
+        pacienteID: cliente.id,
+        direccion: req.body.direccion || "En barbería",
+        hora,
+        horaFin,
+      });
 
-        // 👇 Obtener barbero para la notificación
-        const barbero = await Barbero.findByPk(req.body.barberoID, {
-            include: [{ model: Usuario, as: "usuario" }],
-            transaction: t
-        });
-
-        if (!barbero) {
-            await t.rollback();
-            return res.status(404).json({ mensaje: "Barbero no encontrado" });
-        }
-
-        const cita = await Cita.create({
-            ...req.body,
-            pacienteID: cliente.id,
-            direccion: req.body.direccion || "En barbería",
-            hora,
-            horaFin,
-            estado: "Confirmada"
-        }, { transaction: t });
-
-        // 👇 CREAR NOTIFICACIÓN PARA EL BARBERO (SOLO SI TIENE USUARIO)
-        if (barbero.usuario) {
-            try {
-                console.log("🔔 Creando notificación para barbero desde cliente");
-                const io = req.app.get("io");
-                await notificationsController.createAppointmentNotification(
-                    cita.id,
-                    "creacion",
-                    { 
-                        transaction: t,
-                        io: io
-                    }
-                );
-            } catch (notifError) {
-                console.error("❌ Error al crear notificación:", notifError);
-                // No hacemos rollback por error en notificación
-            }
-        } else {
-            console.log("⚠️ Barbero no tiene usuario asociado, no se crea notificación");
-        }
-
-        await t.commit();
-
-        return res.status(201).json({
-            mensaje: "Cita registrada correctamente",
-            cita,
-        });
+      return res.status(201).json({
+        mensaje: "Cita registrada correctamente",
+        cita,
+      });
     } catch (error) {
-        await t.rollback();
-        console.error("Error en createByPatient:", error);
-        return res.status(500).json({
-            mensaje: "Error interno al crear la cita",
-            error: process.env.NODE_ENV === "development" ? error.message : null,
-        });
+      return res.status(400).json({
+        mensaje: error.message,
+      });
     }
-}
+  }
 
   async update(req = request, res = response) {
     try {
@@ -1050,19 +998,19 @@ async createByPatient(req = request, res = response) {
       // Cambiar estado a cancelada
       await cita.update({ estado: "Cancelada" }, { transaction: t });
 
-try {
-    const io = req.app.get("io"); // 👈 Obtener io
-    await notificationsController.createAppointmentNotification(
-        id,
-        "cancelacion",
-        { 
-            transaction: t,
-            io: io // 👈 Pasar io explícitamente
-        }
-    );
-} catch (notifError) {
-    console.error("Error al crear notificación de cancelación:", notifError);
-}
+      // Enviar notificación de cancelación
+      try {
+        await notificationsController.createAppointmentNotification(
+          id,
+          "cancelacion",
+          { transaction: t }
+        );
+      } catch (notifError) {
+        console.error(
+          "Error al crear notificación de cancelación:",
+          notifError
+        );
+      }
           // ENVÍO DE EMAIL AL BARBERO - AÑADE ESTE BLOQUE
     try {
       let clienteNombre = "";
