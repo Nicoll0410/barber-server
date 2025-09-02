@@ -45,81 +45,116 @@ class ServiciosController {
     }
   }
 
-  /* ─────────────── Crear ─── ahora insumos son opcionales ─────────────── */
-  async create(req = request, res = response) {
-    try {
-      /* ───── Formatear duración ───── */
-      function formatTime(timeString) {
-        const [hours, minutes] = timeString.split(":").map(Number);
+/* ─────────────── Crear ─── ahora insumos son opcionales ─────────────── */
+async create(req = request, res = response) {
+  try {
+    /* ───── Formatear duración CORREGIDO ───── */
+    function formatTimeToDatabase(timeString) {
+      // Convertir "00:30" o "1:30" a formato TIME "00:30:00"
+      const [hours, minutes] = timeString.split(':').map(Number);
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+    }
+
+    function formatTimeToDisplay(timeString) {
+      // Convertir "00:30:00" a texto "30 minutos" para mostrar
+      const [hours, minutes] = timeString.split(':').map(Number);
+      let formatted = "";
+      if (hours > 0) formatted += `${hours} hora${hours !== 1 ? "s" : ""}`;
+      if (minutes > 0) formatted += `${hours > 0 ? " y " : ""}${minutes} minuto${minutes !== 1 ? "s" : ""}`;
+      return formatted || "0 minutos";
+    }
+
+    /* ───── Validación de nombre único ───── */
+    const existePorNombre = await Servicio.findOne({ where: { nombre: req.body.nombre } });
+    if (existePorNombre) throw new Error("Ups, parece que ya existe un servicio con este nombre");
+
+    // ✅ CORREGIDO: Usar formato TIME para la base de datos
+    const duracionMaximaConvertido = formatTimeToDatabase(req.body.duracionMaxima);
+    // ✅ Mantener el formato original para mostrar
+    const duracionDisplay = formatTimeToDisplay(req.body.duracionMaxima);
+
+    /* ───── Crear servicio ───── */
+    const servicio = await Servicio.create({ 
+      ...req.body, 
+      duracionMaximaConvertido, // Formato TIME: "00:30:00"
+      duracionMaxima: duracionDisplay // Formato texto: "30 minutos" 
+    });
+
+    /* ───── Crear insumos SOLO si se enviaron ───── */
+    const insumosData = Array.isArray(req.body.insumos) ? req.body.insumos : [];
+    if (insumosData.length > 0) {
+      const serviciosPorInsumos = insumosData.map((insumo) => ({
+        ...insumo,
+        servicioID: servicio.id,
+      }));
+      await ServiciosPorInsumos.bulkCreate(serviciosPorInsumos);
+    }
+
+    return res.status(201).json({
+      mensaje: "Servicio registrado correctamente",
+      servicio,
+    });
+  } catch (error) {
+    console.log({ error });
+    return res.status(400).json({ mensaje: error.message });
+  }
+}
+
+/* ─────────────── Actualizar (insumos opcionales) ─────────────── */
+async update(req = request, res = response) {
+  try {
+    const servicioExiste = await Servicio.findByPk(req.params.id);
+    if (!servicioExiste) throw new Error("Ups, parece que no encontramos este servicio");
+
+    const existePorNombre = await Servicio.findOne({ where: { nombre: req.body.nombre } });
+    if (existePorNombre && existePorNombre.id !== req.params.id)
+      throw new Error("Ups, parece que ya existe un servicio con este nombre");
+
+    /* ───── Formatear duración si se envía ───── */
+    let datosActualizados = { ...req.body };
+    
+    if (req.body.duracionMaxima) {
+      function formatTimeToDatabase(timeString) {
+        const [hours, minutes] = timeString.split(':').map(Number);
+        return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+      }
+
+      function formatTimeToDisplay(timeString) {
+        const [hours, minutes] = timeString.split(':').map(Number);
         let formatted = "";
         if (hours > 0) formatted += `${hours} hora${hours !== 1 ? "s" : ""}`;
         if (minutes > 0) formatted += `${hours > 0 ? " y " : ""}${minutes} minuto${minutes !== 1 ? "s" : ""}`;
         return formatted || "0 minutos";
       }
 
-      /* ───── Validación de nombre único ───── */
-      const existePorNombre = await Servicio.findOne({ where: { nombre: req.body.nombre } });
-      if (existePorNombre) throw new Error("Ups, parece que ya existe un servicio con este nombre");
+      datosActualizados.duracionMaximaConvertido = formatTimeToDatabase(req.body.duracionMaxima);
+      datosActualizados.duracionMaxima = formatTimeToDisplay(req.body.duracionMaxima);
+    }
 
-      const duracionMaximaConvertido = formatTime(req.body.duracionMaxima);
+    /* ───── Actualizar datos principales ───── */
+    const servicioActualizado = await servicioExiste.update(datosActualizados);
 
-      /* ───── Crear servicio ───── */
-      const servicio = await Servicio.create({ ...req.body, duracionMaximaConvertido });
+    /* ───── Si se envía el array de insumos, se re‑sincroniza ───── */
+    if (Array.isArray(req.body.insumos)) {
+      await ServiciosPorInsumos.destroy({ where: { servicioID: req.params.id } });
 
-      /* ───── Crear insumos SOLO si se enviaron ───── */
-      const insumosData = Array.isArray(req.body.insumos) ? req.body.insumos : [];
-      if (insumosData.length > 0) {
-        const serviciosPorInsumos = insumosData.map((insumo) => ({
+      if (req.body.insumos.length > 0) {
+        const nuevosInsumos = req.body.insumos.map((insumo) => ({
           ...insumo,
-          servicioID: servicio.id,
+          servicioID: servicioActualizado.id,
         }));
-        await ServiciosPorInsumos.bulkCreate(serviciosPorInsumos);
+        await ServiciosPorInsumos.bulkCreate(nuevosInsumos);
       }
-
-      return res.status(201).json({
-        mensaje: "Servicio registrado correctamente",
-        servicio,
-      });
-    } catch (error) {
-      console.log({ error });
-      return res.status(400).json({ mensaje: error.message });
     }
+
+    return res.json({
+      mensaje: "Servicio actualizado correctamente",
+      servicioActualizado,
+    });
+  } catch (error) {
+    return res.status(400).json({ mensaje: error.message });
   }
-
-  /* ─────────────── Actualizar (insumos opcionales) ─────────────── */
-  async update(req = request, res = response) {
-    try {
-      const servicioExiste = await Servicio.findByPk(req.params.id);
-      if (!servicioExiste) throw new Error("Ups, parece que no encontramos este servicio");
-
-      const existePorNombre = await Servicio.findOne({ where: { nombre: req.body.nombre } });
-      if (existePorNombre && existePorNombre.id !== req.params.id)
-        throw new Error("Ups, parece que ya existe un servicio con este nombre");
-
-      /* ───── Actualizar datos principales ───── */
-      const servicioActualizado = await servicioExiste.update(req.body);
-
-      /* ───── Si se envía el array de insumos, se re‑sincroniza ───── */
-      if (Array.isArray(req.body.insumos)) {
-        await ServiciosPorInsumos.destroy({ where: { servicioID: req.params.id } });
-
-        if (req.body.insumos.length > 0) {
-          const nuevosInsumos = req.body.insumos.map((insumo) => ({
-            ...insumo,
-            servicioID: servicioActualizado.id,
-          }));
-          await ServiciosPorInsumos.bulkCreate(nuevosInsumos);
-        }
-      }
-
-      return res.json({
-        mensaje: "Servicio actualizado correctamente",
-        servicioActualizado,
-      });
-    } catch (error) {
-      return res.status(400).json({ mensaje: error.message });
-    }
-  }
+}
 
   /* ─────────────── Eliminar ─────────────── */
   async delete(req = request, res = response) {
