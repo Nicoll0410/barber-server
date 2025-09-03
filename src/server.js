@@ -27,135 +27,154 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { JobsManager } from "./jobs/index.js";
 
 export class Server {
-    constructor() {
-        this.app = express();
+  constructor() {
+    this.app = express();
 
-        // Middlewares y rutas
-        this.middlewares();
-        this.routes();
+    // Middlewares y rutas
+    this.middlewares();
+    this.routes();
 
-        // 👇 Crear servidor HTTP y Socket.IO
-        this.server = http.createServer(this.app);
-        this.io = new SocketIOServer(this.server, {
-            cors: {
-                origin: [
-                    "https://nmbarberapp-seven.vercel.app",
-                    "http://localhost:3000",
-                    "http://localhost:8081",
-                    "http://localhost:19006"
-                ],
-                methods: ["GET", "POST", "PUT", "DELETE"],
-                credentials: true
-            }
-        });
+    // 👇 Crear servidor HTTP y Socket.IO
+    this.server = http.createServer(this.app);
+    this.io = new SocketIOServer(this.server, {
+      cors: {
+        origin: [
+          "https://nmbarberapp-seven.vercel.app",
+          "http://localhost:3000",
+          "http://localhost:8081",
+          "http://localhost:19006",
+        ],
+        methods: ["GET", "POST", "PUT", "DELETE"],
+        credentials: true,
+      },
+    });
 
-        // Guardar instancia global de io para usar en controladores
-        this.app.set("io", this.io);
+    // Guardar instancia global de io para usar en controladores
+    this.app.set("io", this.io);
 
-        // Eventos de conexión
-        this.io.on("connection", (socket) => {
-            console.log("🟢 Cliente conectado:", socket.id);
+    // Eventos de conexión
+    this.io.on("connection", (socket) => {
+      console.log("🟢 Cliente conectado:", socket.id);
 
-            socket.on("disconnect", () => {
-                console.log("🔴 Cliente desconectado:", socket.id);
-            });
-        });
+      // Unir al usuario a su sala personal
+      socket.on("unir_usuario", (usuarioId) => {
+        socket.join(`usuario_${usuarioId}`);
+        console.log(`👤 Usuario ${usuarioId} unido a su sala personal`);
+      });
 
-        // Sincronizar modelos y levantar servidor
-        syncAllModels()
-            .then(() => {
-                JobsManager.iniciarTodos();
-                this.server.listen(process.env.PORT, "0.0.0.0", () =>
-                    console.log(
-                        `🚀 Servidor ejecutándose en el puerto ${process.env.PORT}`
-                    )
-                );
-            })
-            .catch((err) => {
-                console.error("❌ Error al sincronizar modelos:", err);
-            });
-    }
+      socket.on("disconnect", () => {
+        console.log("🔴 Cliente desconectado:", socket.id);
+      });
+    });
 
-    middlewares() {
-        // Configuración de CORS CORREGIDA
-        const allowedOrigins = [
-            "https://nmbarberapp-seven.vercel.app",
-            "http://localhost:3000",
-            "http://localhost:8081",
-            "http://localhost:19006"
-        ];
+    // Sincronizar modelos y levantar servidor
+    syncAllModels()
+      .then(() => {
+        JobsManager.iniciarTodos();
+        this.server.listen(process.env.PORT, "0.0.0.0", () =>
+          console.log(
+            `🚀 Servidor ejecutándose en el puerto ${process.env.PORT}`
+          )
+        );
+      })
+      .catch((err) => {
+        console.error("❌ Error al sincronizar modelos:", err);
+      });
+  }
 
-        this.app.use(cors({
-            origin: function (origin, callback) {
-                // Permitir requests sin origin (como mobile apps, postman, curl)
-                if (!origin) return callback(null, true);
-                
-                if (allowedOrigins.indexOf(origin) !== -1) {
-                    return callback(null, true);
-                } else {
-                    console.log("❌ Origen no permitido por CORS:", origin);
-                    return callback(new Error("Not allowed by CORS"), false);
-                }
-            },
-            credentials: true,
-            methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            allowedHeaders: ["Content-Type", "Authorization", "x-auth-token", "X-Requested-With"]
-        }));
+  middlewares() {
+    // Configuración de CORS CORREGIDA
+    const allowedOrigins = [
+      "https://nmbarberapp-seven.vercel.app",
+      "http://localhost:3000",
+      "http://localhost:8081",
+      "http://localhost:19006",
+    ];
 
-        // Manejar preflight requests
-        this.app.options("*", cors());
+    this.app.use(
+      cors({
+        origin: function (origin, callback) {
+          // Permitir requests sin origin (como mobile apps, postman, curl)
+          if (!origin) return callback(null, true);
 
-        // Headers adicionales para CORS
-        this.app.use((req, res, next) => {
-            res.header("Access-Control-Allow-Credentials", "true");
-            res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-            res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, x-auth-token, X-Requested-With");
-            
-            if (req.method === "OPTIONS") {
-                return res.status(200).end();
-            }
-            next();
-        });
+          if (allowedOrigins.indexOf(origin) !== -1) {
+            return callback(null, true);
+          } else {
+            console.log("❌ Origen no permitido por CORS:", origin);
+            return callback(new Error("Not allowed by CORS"), false);
+          }
+        },
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allowedHeaders: [
+          "Content-Type",
+          "Authorization",
+          "x-auth-token",
+          "X-Requested-With",
+        ],
+      })
+    );
 
-        this.app.use(express.json({ limit: "50mb" }));
-        this.app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-        this.app.use(morgan("combined"));
+    // Manejar preflight requests
+    this.app.options("*", cors());
 
-        new Database();
-    }
+    // Headers adicionales para CORS
+    this.app.use((req, res, next) => {
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header(
+        "Access-Control-Allow-Methods",
+        "GET, POST, PUT, DELETE, OPTIONS"
+      );
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type, Authorization, x-auth-token, X-Requested-With"
+      );
 
-    routes() {
-        // Rutas públicas
-        this.app.use("/auth", authRouter);
-        this.app.use("/public", publicRouter);
-        this.app.use("/usuarios", usuarioRouter);
+      if (req.method === "OPTIONS") {
+        return res.status(200).end();
+      }
+      next();
+    });
 
-        // Middleware JWT para proteger el resto
-        this.app.use(jwtMiddlewares.verifyToken);
+    this.app.use(express.json({ limit: "50mb" }));
+    this.app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+    this.app.use(morgan("combined"));
 
-        // Rutas privadas
-        this.app.use("/roles", rolesRouter);
-        this.app.use("/proveedores", proveedoresRouter);
-        this.app.use("/categorias-insumos", categoriasInsumosRouter);
-        this.app.use("/insumos", insumosRouter);
-        this.app.use("/movimientos", movimientosRouter);
-        this.app.use("/usuarios", usuarioRouter);
-        this.app.use("/servicios", serviciosRouter);
-        this.app.use("/notifications", notificationsRouter);
-        this.app.use("/barberos", barberosRouter);
-        this.app.use("/clientes", clientesRouter);
-        this.app.use("/compras", comprasRouter);
-        this.app.use("/dashboard", dashboardRouter);
-        this.app.use("/citas", citasRouter);
-        this.app.use("/ventas", RouterVentas);
+    new Database();
+  }
 
-        // Ruta de health check para verificar CORS
-        this.app.get("/health-check", (req, res) => {
-            res.json({ 
-                status: "OK", 
-                message: "CORS configurado correctamente",
-                timestamp: new Date().toISOString()
-            });
-        });
-    }
+  routes() {
+    // Rutas públicas
+    this.app.use("/auth", authRouter);
+    this.app.use("/public", publicRouter);
+    this.app.use("/usuarios", usuarioRouter);
+
+    // Middleware JWT para proteger el resto
+    this.app.use(jwtMiddlewares.verifyToken);
+
+    // Rutas privadas
+    this.app.use("/roles", rolesRouter);
+    this.app.use("/proveedores", proveedoresRouter);
+    this.app.use("/categorias-insumos", categoriasInsumosRouter);
+    this.app.use("/insumos", insumosRouter);
+    this.app.use("/movimientos", movimientosRouter);
+    this.app.use("/usuarios", usuarioRouter);
+    this.app.use("/servicios", serviciosRouter);
+    this.app.use("/notifications", notificationsRouter);
+    this.app.use("/barberos", barberosRouter);
+    this.app.use("/clientes", clientesRouter);
+    this.app.use("/compras", comprasRouter);
+    this.app.use("/dashboard", dashboardRouter);
+    this.app.use("/citas", citasRouter);
+    this.app.use("/ventas", RouterVentas);
+
+    // Ruta de health check para verificar CORS
+    this.app.get("/health-check", (req, res) => {
+      res.json({
+        status: "OK",
+        message: "CORS configurado correctamente",
+        timestamp: new Date().toISOString(),
+      });
+    });
+  }
 }

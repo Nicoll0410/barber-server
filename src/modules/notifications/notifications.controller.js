@@ -98,6 +98,109 @@ class NotificationsController {
         }
     }
 
+    async enviarNotificacionCitaTiempoReal(citaId, usuarioCreadorId, options = {}) {
+  try {
+    const io = require('../../server').io;
+    
+    const cita = await Cita.findByPk(citaId, {
+      include: [
+        { model: Servicio, as: 'servicio' },
+        { model: Barbero, as: 'barbero', include: [{ model: Usuario, as: 'usuario' }] },
+        { model: Cliente, as: 'cliente', include: [{ model: Usuario, as: 'usuario' }] }
+      ],
+      transaction: options.transaction
+    });
+
+    if (!cita) {
+      console.error("❌ Cita no encontrada para notificación");
+      return;
+    }
+
+    const usuarioCreador = await Usuario.findByPk(usuarioCreadorId, {
+      include: [{ model: Rol, as: 'rol' }],
+      transaction: options.transaction
+    });
+
+    let destinatarios = [];
+    const rolCreador = usuarioCreador.rol?.nombre;
+
+    if (rolCreador === 'administrador') {
+      if (cita.barbero?.usuario?.id) destinatarios.push(cita.barbero.usuario.id);
+      if (cita.cliente?.usuario?.id) destinatarios.push(cita.cliente.usuario.id);
+    } 
+    else if (rolCreador === 'barbero') {
+      const administradores = await Usuario.findAll({
+        include: [{
+          model: Rol,
+          as: 'rol',
+          where: { nombre: 'administrador' }
+        }],
+        transaction: options.transaction
+      });
+      destinatarios = administradores.map(admin => admin.id);
+      if (cita.cliente?.usuario?.id) destinatarios.push(cita.cliente.usuario.id);
+    } 
+    else if (rolCreador === 'cliente') {
+      if (cita.barbero?.usuario?.id) destinatarios.push(cita.barbero.usuario.id);
+      const administradores = await Usuario.findAll({
+        include: [{
+          model: Rol,
+          as: 'rol',
+          where: { nombre: 'administrador' }
+        }],
+        transaction: options.transaction
+      });
+      destinatarios = [...destinatarios, ...administradores.map(admin => admin.id)];
+    }
+
+    // Eliminar duplicados y al creador
+    destinatarios = [...new Set(destinatarios)].filter(id => id !== usuarioCreadorId);
+
+    const fechaFormateada = new Date(cita.fecha).toLocaleDateString("es-ES");
+    const mensaje = `Nueva cita: ${cita.servicio?.nombre} - ${fechaFormateada} ${cita.hora}`;
+
+    for (const destinatarioId of destinatarios) {
+      const notificacion = await Notificacion.create({
+        usuarioID: destinatarioId,
+        titulo: '📅 Nueva Cita',
+        cuerpo: mensaje,
+        tipo: 'cita_creada',
+        relacionId: cita.id,
+        leido: false
+      }, { transaction: options.transaction });
+
+      // Emitir por socket
+      io.to(`usuario_${destinatarioId}`).emit('nueva_notificacion', {
+        ...notificacion.toJSON(),
+        sound: true,
+        cita: cita
+      });
+
+      // Push notification
+      const usuarioDestino = await Usuario.findByPk(destinatarioId, {
+        transaction: options.transaction
+      });
+      
+      if (usuarioDestino?.expo_push_token) {
+        await this.sendPushNotification({
+          userId: destinatarioId,
+          titulo: '📅 Nueva Cita',
+          cuerpo: mensaje,
+          data: {
+            type: "cita",
+            citaId: cita.id,
+            screen: "DetalleCita"
+          }
+        });
+      }
+    }
+
+  } catch (error) {
+    console.error("❌ Error en enviarNotificacionCitaTiempoReal:", error);
+    throw error;
+  }
+}
+
     async enviarNotificacionesCita(cita, usuarioCreador, options = {}) {
         try {
             console.log("🔔 Enviando notificaciones de cita para:", cita.id);
