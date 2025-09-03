@@ -671,58 +671,26 @@ class CitasController {
       const citaCreada = await Cita.create(datosFinales, { transaction: t });
 
       // Crear notificación si el barbero tiene usuario asociado
-try {
-    console.log("🔔 Intentando crear notificaciones para la cita:", citaCreada.id);
-    const io = req.app.get("io");
-    
-    // 1. Notificación para el BARBERO
-    await notificationsController.createAppointmentNotification(
-        citaCreada.id,
-        "creacion",
-        { 
-            transaction: t,
-            io: io,
-            destinatario: "barbero"
-        }
-    );
-    
-    // 2. Notificación para el ADMINISTRADOR (si no es el mismo que creó la cita)
-    const usuarioActual = await this.obtenerUsuarioActualDesdeToken(req);
-    if (usuarioActual && usuarioActual.rol !== "Barbero") {
-        await notificationsController.createAppointmentNotification(
+      if (barbero.usuario) {
+        try {
+          console.log(
+            "🔔 Intentando crear notificación para barbero:",
+            barbero.usuario.id
+          );
+          await notificationsController.createAppointmentNotification(
             citaCreada.id,
             "creacion",
-            { 
-                transaction: t,
-                io: io,
-                destinatario: "admin"
-            }
-        );
-    }
-    
-    // 3. Notificación para el CLIENTE (si no es temporal y tiene usuario)
-    if (req.body.pacienteID) {
-        const cliente = await Cliente.findByPk(req.body.pacienteID, {
-            transaction: t
-        });
-        
-        if (cliente && cliente.usuarioID) {
-            await notificationsController.createAppointmentNotification(
-                citaCreada.id,
-                "creacion",
-                { 
-                    transaction: t,
-                    io: io,
-                    destinatario: "cliente"
-                }
-            );
+            { transaction: t } // 👈 Asegúrate de pasar la transacción
+          );
+        } catch (notifError) {
+          console.error("❌ Error al crear notificación:", notifError);
+          // No hacemos rollback por un error en la notificación
         }
-    }
-} catch (notifError) {
-    console.error("❌ Error al crear notificaciones:", notifError);
-    // No hacemos rollback por errores en notificaciones
-}
-
+      } else {
+        console.log(
+          "⚠️ Barbero no tiene usuario asociado, no se crea notificación"
+        );
+      }
 
         // ENVÍO DE EMAIL AL BARBERO - AÑADE ESTE BLOQUE
     try {
@@ -784,25 +752,6 @@ try {
       });
     }
   }
-  
-  async obtenerUsuarioActualDesdeToken(req) {
-    try {
-        const authHeader = req.header("Authorization");
-        if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
-        
-        const token = authHeader.split(" ")[1];
-        const decoded = jwt.decode(token);
-        
-        const usuario = await Usuario.findByPk(decoded.id, {
-            include: [{ model: Rol, as: "rol" }]
-        });
-        
-        return usuario ? { id: usuario.id, rol: usuario.rol?.nombre } : null;
-    } catch (error) {
-        console.error("Error obteniendo usuario actual:", error);
-        return null;
-    }
-}
 
   async createByPatient(req = request, res = response) {
     try {
