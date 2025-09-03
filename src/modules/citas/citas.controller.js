@@ -19,11 +19,11 @@ import {
 } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { format } from "mysql2";
-import { correos } from "../../utils/correos.util.js";
+import { correos } from "../../utils/correo.util.js";
 import { sendEmail } from "../../utils/send-email.util.js";
 import jwt from "jsonwebtoken";
 import { Insumo } from "../insumos/insumos.model.js";
-import { sequelize } from "../../database.js"; // Asegúrate que la ruta sea correcta
+import { sequelize } from "../../database.js";
 import notificationsController from "../notifications/notifications.controller.js";
 
 class CitasController {
@@ -226,7 +226,6 @@ class CitasController {
     }
   }
 
-  /* -------- GET citas del barbero autenticado ------------------ */
   async getByBarberID(req = request, res = response) {
     try {
       const authHeader = req.header("Authorization");
@@ -242,7 +241,6 @@ class CitasController {
         where: { usuarioID: usuario.id },
       });
 
-      /* ---------- filtros de búsqueda ---------- */
       const obtenerIdsRelacionados = async (Modelo, search) => {
         const registros = await Modelo.findAll({
           attributes: ["id"],
@@ -288,7 +286,6 @@ class CitasController {
         });
       }
 
-      /* ------------- NUEVO: all=true salta la paginación -------- */
       const baseQuery = {
         order: [["fecha", "DESC"]],
         where: {
@@ -492,7 +489,6 @@ class CitasController {
         JSON.stringify(req.body, null, 2)
       );
 
-      // Validaciones mejoradas
       const requiredFields = ["barberoID", "servicioID", "fecha", "hora"];
 
       const missingFields = requiredFields.filter((field) => !req.body[field]);
@@ -504,7 +500,6 @@ class CitasController {
         });
       }
 
-      // Verificar que el barbero existe
       const barbero = await Barbero.findByPk(req.body.barberoID, {
         include: [{ model: Usuario, as: "usuario" }],
         transaction: t,
@@ -518,7 +513,6 @@ class CitasController {
         });
       }
 
-      // Verificar que el servicio existe
       const servicio = await Servicio.findByPk(req.body.servicioID, {
         transaction: t,
       });
@@ -530,7 +524,6 @@ class CitasController {
         });
       }
 
-      // Validar cliente o cliente temporal - CORREGIDO
       if (!req.body.pacienteID && !req.body.pacienteTemporalNombre) {
         await t.rollback();
         return res.status(400).json({
@@ -538,7 +531,6 @@ class CitasController {
         });
       }
 
-      // Si es cliente temporal, NO debe tener pacienteID
       if (req.body.pacienteTemporalNombre && req.body.pacienteID) {
         await t.rollback();
         return res.status(400).json({
@@ -547,7 +539,6 @@ class CitasController {
         });
       }
 
-      // Formatear hora correctamente
       let hora = req.body.hora;
       if (!hora.includes(":")) {
         hora = `${hora}:00`;
@@ -555,7 +546,6 @@ class CitasController {
         hora = `${hora}:00`;
       }
 
-      // Calcular duración y hora de fin
       const [horas, minutos] = servicio.duracionMaxima.split(":").map(Number);
       const duracionMinutos = horas * 60 + minutos;
       const horaFin = new Date(`2000-01-01T${hora}`);
@@ -569,7 +559,6 @@ class CitasController {
         .toString()
         .padStart(2, "0")}:00`;
 
-      // Verificar disponibilidad - LÓGICA CORREGIDA
       const citasSolapadas = await Cita.findAll({
         where: {
           barberoID: req.body.barberoID,
@@ -579,7 +568,6 @@ class CitasController {
         transaction: t,
       });
 
-      // Convertir a minutos para comparación
       const [horaH, horaM] = hora.split(":").map(Number);
       const horaFinH = horaFin.getHours();
       const horaFinM = horaFin.getMinutes();
@@ -596,11 +584,10 @@ class CitasController {
         const citaInicioMin = citaHoraH * 60 + citaHoraM;
         const citaFinMin = citaHoraFinH * 60 + citaHoraFinM;
 
-        // Verificar si los rangos se solapan
         return (
-          (inicioMinutos >= citaInicioMin && inicioMinutos < citaFinMin) || // Nueva cita empieza durante una existente
-          (finMinutos > citaInicioMin && finMinutos <= citaFinMin) || // Nueva cita termina durante una existente
-          (inicioMinutos <= citaInicioMin && finMinutos >= citaFinMin) // Nueva cita engloba una existente
+          (inicioMinutos >= citaInicioMin && inicioMinutos < citaFinMin) ||
+          (finMinutos > citaInicioMin && finMinutos <= citaFinMin) ||
+          (inicioMinutos <= citaInicioMin && finMinutos >= citaFinMin)
         );
       });
 
@@ -617,7 +604,6 @@ class CitasController {
         });
       }
 
-      // Preparar datos de la cita - CORREGIDO
       const nuevaCita = {
         servicioID: req.body.servicioID,
         barberoID: req.body.barberoID,
@@ -634,9 +620,7 @@ class CitasController {
         direccion: req.body.direccion || "En barbería",
       };
 
-      // Asignar cliente - CORREGIDO
       if (req.body.pacienteID) {
-        // Verificar que el cliente existe
         const cliente = await Cliente.findByPk(req.body.pacienteID, {
           transaction: t,
         });
@@ -649,7 +633,6 @@ class CitasController {
         }
         nuevaCita.pacienteID = req.body.pacienteID;
       } else {
-        // Para clientes temporales, NO establecer pacienteID
         nuevaCita.pacienteTemporalNombre =
           req.body.pacienteTemporalNombre.trim();
         if (req.body.pacienteTemporalTelefono) {
@@ -658,7 +641,6 @@ class CitasController {
         }
       }
 
-      // CORRECCIÓN: Remover pacienteID si es undefined/null
       const datosFinales = { ...nuevaCita };
       if (
         datosFinales.pacienteID === null ||
@@ -667,75 +649,63 @@ class CitasController {
         delete datosFinales.pacienteID;
       }
 
-      // Crear la cita con los datos corregidos
       const citaCreada = await Cita.create(datosFinales, { transaction: t });
 
-      // Crear notificación si el barbero tiene usuario asociado
-      if (barbero.usuario) {
-        try {
-          console.log(
-            "🔔 Intentando crear notificación para barbero:",
-            barbero.usuario.id
-          );
-          await notificationsController.createAppointmentNotification(
-            citaCreada.id,
-            "creacion",
-            { transaction: t } // 👈 Asegúrate de pasar la transacción
-          );
-        } catch (notifError) {
-          console.error("❌ Error al crear notificación:", notifError);
-          // No hacemos rollback por un error en la notificación
-        }
-      } else {
-        console.log(
-          "⚠️ Barbero no tiene usuario asociado, no se crea notificación"
-        );
-      }
-
-        // ENVÍO DE EMAIL AL BARBERO - AÑADE ESTE BLOQUE
-    try {
-      // Obtener información completa para el email
-      const barberoConEmail = await Barbero.findByPk(req.body.barberoID, {
-        include: [{ model: Usuario, as: "usuario" }],
-        transaction: t
-      });
-      
-      const servicioInfo = await Servicio.findByPk(req.body.servicioID, {
-        transaction: t
-      });
-      
-      let clienteNombre = "";
-      if (req.body.pacienteID) {
-        const clienteInfo = await Cliente.findByPk(req.body.pacienteID, {
+      // 👇 NUEVO: Enviar notificaciones según quién creó la cita
+      try {
+        const usuarioCreador = await Usuario.findByPk(req.user.id, {
+          include: [{ model: Rol, as: 'rol' }],
           transaction: t
         });
-        clienteNombre = clienteInfo.nombre;
-      } else {
-        clienteNombre = req.body.pacienteTemporalNombre;
+        
+        await notificationsController.enviarNotificacionesCita(
+          citaCreada, 
+          usuarioCreador, 
+          { transaction: t }
+        );
+      } catch (notifError) {
+        console.error("❌ Error en notificaciones:", notifError);
       }
 
-      if (barberoConEmail && barberoConEmail.usuario && barberoConEmail.usuario.email) {
-        const fechaHora = new Date(`${req.body.fecha}T${hora}`);
-        
-        const emailContent = correos.notificacionCitaBarbero({
-          tipo: 'creacion',
-          cliente_nombre: clienteNombre,
-          fecha_hora: fechaHora,
-          servicio_nombre: servicioInfo.nombre
+      try {
+        const barberoConEmail = await Barbero.findByPk(req.body.barberoID, {
+          include: [{ model: Usuario, as: "usuario" }],
+          transaction: t
         });
         
-        await sendEmail({
-          to: barberoConEmail.usuario.email,
-          subject: 'Nueva cita agendada - Barbería',
-          html: emailContent
+        const servicioInfo = await Servicio.findByPk(req.body.servicioID, {
+          transaction: t
         });
         
-        console.log('📧 Email de notificación enviado al barbero');
+        let clienteNombre = "";
+        if (req.body.pacienteID) {
+          const clienteInfo = await Cliente.findByPk(req.body.pacienteID, {
+            transaction: t
+          });
+          clienteNombre = clienteInfo.nombre;
+        } else {
+          clienteNombre = req.body.pacienteTemporalNombre;
+        }
+
+        if (barberoConEmail && barberoConEmail.usuario && barberoConEmail.usuario.email) {
+          const fechaHora = new Date(`${req.body.fecha}T${hora}`);
+          
+          const emailContent = correos.notificacionCitaBarbero({
+            tipo: 'creacion',
+            cliente_nombre: clienteNombre,
+            fecha_hora: fechaHora,
+            servicio_nombre: servicioInfo.nombre
+          });
+          
+          await sendEmail({
+            to: barberoConEmail.usuario.email,
+            subject: 'Nueva cita agendada - Barbería',
+            html: emailContent
+          });
+        }
+      } catch (emailError) {
+        console.error('❌ Error al enviar email de notificación:', emailError);
       }
-    } catch (emailError) {
-      console.error('❌ Error al enviar email de notificación:', emailError);
-      // No hacemos rollback por error en el email
-    }
 
       await t.commit();
 
@@ -808,10 +778,8 @@ class CitasController {
       if (!citaExiste)
         throw new Error("Ups, parece que no encontramos esta cita");
 
-      // No obligamos pacienteID en update: se puede asignar pacienteID o datos temporales
       const datos = { ...req.body };
 
-      // Si actualizaron hora -> recalcular horaFin si servicio cambió/esta presente
       if (datos.hora && datos.servicioID) {
         const { duracionMaxima } = await Servicio.findByPk(datos.servicioID, {
           attributes: ["duracionMaxima"],
@@ -887,7 +855,6 @@ class CitasController {
         attributes: ["hora", "horaFin"],
       });
 
-      // Usamos la duración redondeada para calcular disponibilidad
       const [hRed, mRed] = servicio.duracionRedondeada.split(":").map(Number);
       const duracionMaxima = hRed + mRed / 60;
 
@@ -979,7 +946,6 @@ class CitasController {
         return res.status(404).json({ mensaje: "Cita no encontrada" });
       }
 
-      // Verificar que la cita no esté ya completada o expirada
       if (cita.estado === "Completa" || cita.estado === "Expirada") {
         await t.rollback();
         return res.status(400).json({
@@ -987,7 +953,6 @@ class CitasController {
         });
       }
 
-      // Verificar si la cita ya pasó
       const ahora = new Date();
       const fechaCita = new Date(`${cita.fecha}T${cita.hora}`);
 
@@ -998,10 +963,8 @@ class CitasController {
         });
       }
 
-      // Cambiar estado a cancelada
       await cita.update({ estado: "Cancelada" }, { transaction: t });
 
-      // Enviar notificación de cancelación
       try {
         await notificationsController.createAppointmentNotification(
           id,
@@ -1014,40 +977,36 @@ class CitasController {
           notifError
         );
       }
-          // ENVÍO DE EMAIL AL BARBERO - AÑADE ESTE BLOQUE
-    try {
-      let clienteNombre = "";
-      if (cita.pacienteID) {
-        clienteNombre = cita.cliente ? cita.cliente.nombre : "Cliente";
-      } else {
-        clienteNombre = cita.pacienteTemporalNombre || "Cliente temporal";
-      }
 
-      if (cita.barbero && cita.barbero.usuario && cita.barbero.usuario.email) {
-        const fechaHora = new Date(`${cita.fecha}T${cita.hora}`);
-        const motivo = req.body.motivo || "No especificado";
-        
-        const emailContent = correos.notificacionCitaBarbero({
-          tipo: 'cancelacion',
-          cliente_nombre: clienteNombre,
-          fecha_hora: fechaHora,
-          servicio_nombre: cita.servicio ? cita.servicio.nombre : "Servicio",
-          motivo_cancelacion: motivo
-        });
-        
-        await sendEmail({
-          to: cita.barbero.usuario.email,
-          subject: 'Cita cancelada - Barbería',
-          html: emailContent
-        });
-        
-        console.log('📧 Email de cancelación enviado al barbero');
-      }
-    } catch (emailError) {
-      console.error('❌ Error al enviar email de cancelación:', emailError);
-      // No hacemos rollback por error en el email
-    }
+      try {
+        let clienteNombre = "";
+        if (cita.pacienteID) {
+          clienteNombre = cita.cliente ? cita.cliente.nombre : "Cliente";
+        } else {
+          clienteNombre = cita.pacienteTemporalNombre || "Cliente temporal";
+        }
 
+        if (cita.barbero && cita.barbero.usuario && cita.barbero.usuario.email) {
+          const fechaHora = new Date(`${cita.fecha}T${cita.hora}`);
+          const motivo = req.body.motivo || "No especificado";
+          
+          const emailContent = correos.notificacionCitaBarbero({
+            tipo: 'cancelacion',
+            cliente_nombre: clienteNombre,
+            fecha_hora: fechaHora,
+            servicio_nombre: cita.servicio ? cita.servicio.nombre : "Servicio",
+            motivo_cancelacion: motivo
+          });
+          
+          await sendEmail({
+            to: cita.barbero.usuario.email,
+            subject: 'Cita cancelada - Barbería',
+            html: emailContent
+          });
+        }
+      } catch (emailError) {
+        console.error('❌ Error al enviar email de cancelación:', emailError);
+      }
 
       await t.commit();
 
@@ -1066,7 +1025,6 @@ class CitasController {
     }
   }
 
-  // Marcar todas las notificaciones como leídas para un usuario
   async markAllAsRead(req = request, res = response) {
     try {
       const { userId } = req.params;
@@ -1244,8 +1202,7 @@ class CitasController {
 
     if (!fecha || !hora || !barberoID) {
       return res
-        .status(400)
-        .json({ error: "fecha, hora y barberoID son requeridos" });
+        .status(400).json({ error: "fecha, hora y barberoID son requeridos" });
     }
 
     const hourDecimal = parseFloat(hora);
@@ -1315,7 +1272,6 @@ class CitasController {
   }
 }
 
-// Función para redondear la duración a intervalos de 30 minutos
 function redondearDuracion(duracionStr) {
   const [h, m] = duracionStr.split(":").map(Number);
   const totalMinutos = h * 60 + m;
