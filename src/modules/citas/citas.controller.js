@@ -671,21 +671,59 @@ class CitasController {
       const citaCreada = await Cita.create(datosFinales, { transaction: t });
 
       // Crear notificación si el barbero tiene usuario asociado
-if (barbero.usuario) {
-    try {
-        console.log("🔔 Intentando crear notificación para barbero:", barbero.usuario.id);
-        const io = req.app.get("io"); // 👈 Obtener io
+try {
+    console.log("🔔 Intentando crear notificaciones para la cita:", citaCreada.id);
+    const io = req.app.get("io");
+    
+    // 1. Notificación para el BARBERO
+    if (barbero.usuario) {
         await notificationsController.createAppointmentNotification(
             citaCreada.id,
             "creacion",
             { 
                 transaction: t,
-                io: io // 👈 Pasar io explícitamente
+                io: io,
+                destinatario: "barbero"
             }
         );
-    } catch (notifError) {
-        console.error("❌ Error al crear notificación:", notifError);
     }
+    
+    // 2. Notificación para el ADMINISTRADOR (si no es el mismo que creó la cita)
+    const usuarioActual = await obtenerUsuarioActualDesdeToken(req);
+    if (usuarioActual && usuarioActual.rol !== "Barbero") {
+        await notificationsController.createAppointmentNotification(
+            citaCreada.id,
+            "creacion",
+            { 
+                transaction: t,
+                io: io,
+                destinatario: "admin"
+            }
+        );
+    }
+    
+    // 3. Notificación para el CLIENTE (si no es temporal)
+    if (req.body.pacienteID) {
+        const cliente = await Cliente.findByPk(req.body.pacienteID, {
+            include: [{ model: Usuario, as: "usuario" }],
+            transaction: t
+        });
+        
+        if (cliente && cliente.usuario) {
+            await notificationsController.createAppointmentNotification(
+                citaCreada.id,
+                "creacion",
+                { 
+                    transaction: t,
+                    io: io,
+                    destinatario: "cliente"
+                }
+            );
+        }
+    }
+} catch (notifError) {
+    console.error("❌ Error al crear notificaciones:", notifError);
+    // No hacemos rollback por errores en notificaciones
 }
 
 
@@ -749,6 +787,25 @@ if (barbero.usuario) {
       });
     }
   }
+  
+  async obtenerUsuarioActualDesdeToken(req) {
+    try {
+        const authHeader = req.header("Authorization");
+        if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+        
+        const token = authHeader.split(" ")[1];
+        const decoded = jwt.decode(token);
+        
+        const usuario = await Usuario.findByPk(decoded.id, {
+            include: [{ model: Rol, as: "rol" }]
+        });
+        
+        return usuario ? { id: usuario.id, rol: usuario.rol?.nombre } : null;
+    } catch (error) {
+        console.error("Error obteniendo usuario actual:", error);
+        return null;
+    }
+}
 
   async createByPatient(req = request, res = response) {
     try {
