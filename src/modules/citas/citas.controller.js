@@ -484,304 +484,237 @@ class CitasController {
     }
   }
 
-async create(req = request, res = response) {
-  const t = await sequelize.transaction();
-  try {
-    console.log(
-      "Datos recibidos para crear cita:",
-      JSON.stringify(req.body, null, 2)
-    );
-
-    // Validaciones mejoradas
-    const requiredFields = ["barberoID", "servicioID", "fecha", "hora"];
-
-    const missingFields = requiredFields.filter((field) => !req.body[field]);
-    if (missingFields.length > 0) {
-      await t.rollback();
-      return res.status(400).json({
-        mensaje: `Faltan campos requeridos: ${missingFields.join(", ")}`,
-        camposFaltantes: missingFields,
-      });
-    }
-
-    // Verificar que el barbero existe
-    const barbero = await Barbero.findByPk(req.body.barberoID, {
-      include: [{ model: Usuario, as: "usuario" }],
-      transaction: t,
-    });
-
-    if (!barbero) {
-      await t.rollback();
-      return res.status(404).json({
-        mensaje: "Barbero no encontrado",
-        barberoID: req.body.barberoID,
-      });
-    }
-
-    // Verificar que el servicio existe
-    const servicio = await Servicio.findByPk(req.body.servicioID, {
-      transaction: t,
-    });
-    if (!servicio) {
-      await t.rollback();
-      return res.status(404).json({
-        mensaje: "Servicio no encontrado",
-        servicioID: req.body.servicioID,
-      });
-    }
-
-    // Validar cliente o cliente temporal - CORREGIDO
-    if (!req.body.pacienteID && !req.body.pacienteTemporalNombre) {
-      await t.rollback();
-      return res.status(400).json({
-        mensaje: "Se requiere pacienteID o pacienteTemporalNombre",
-      });
-    }
-
-    // Si es cliente temporal, NO debe tener pacienteID
-    if (req.body.pacienteTemporalNombre && req.body.pacienteID) {
-      await t.rollback();
-      return res.status(400).json({
-        mensaje:
-          "No se puede enviar pacienteID y pacienteTemporalNombre simultáneamente",
-      });
-    }
-
-    // Formatear hora correctamente
-    let hora = req.body.hora;
-    if (!hora.includes(":")) {
-      hora = `${hora}:00`;
-    } else if (hora.split(":").length === 2) {
-      hora = `${hora}:00`;
-    }
-
-    // Calcular duración y hora de fin
-    const [horas, minutos] = servicio.duracionMaxima.split(":").map(Number);
-    const duracionMinutos = horas * 60 + minutos;
-    const horaFin = new Date(`2000-01-01T${hora}`);
-    horaFin.setMinutes(horaFin.getMinutes() + duracionMinutos);
-
-    const horaFinFormatted = `${horaFin
-      .getHours()
-      .toString()
-      .padStart(2, "0")}:${horaFin
-      .getMinutes()
-      .toString()
-      .padStart(2, "0")}:00`;
-
-    // Verificar disponibilidad - LÓGICA CORREGIDA
-    const citasSolapadas = await Cita.findAll({
-      where: {
-        barberoID: req.body.barberoID,
-        fecha: req.body.fecha,
-        estado: { [Op.notIn]: ["Cancelada", "Expirada"] },
-      },
-      transaction: t,
-    });
-
-    // Convertir a minutos para comparación
-    const [horaH, horaM] = hora.split(":").map(Number);
-    const horaFinH = horaFin.getHours();
-    const horaFinM = horaFin.getMinutes();
-
-    const inicioMinutos = horaH * 60 + horaM;
-    const finMinutos = horaFinH * 60 + horaFinM;
-
-    const tieneConflicto = citasSolapadas.some((cita) => {
-      const [citaHoraH, citaHoraM] = cita.hora.split(":").map(Number);
-      const [citaHoraFinH, citaHoraFinM] = cita.horaFin
-        .split(":")
-        .map(Number);
-
-      const citaInicioMin = citaHoraH * 60 + citaHoraM;
-      const citaFinMin = citaHoraFinH * 60 + citaHoraFinM;
-
-      // Verificar si los rangos se solapan
-      return (
-        (inicioMinutos >= citaInicioMin && inicioMinutos < citaFinMin) || // Nueva cita empieza durante una existente
-        (finMinutos > citaInicioMin && finMinutos <= citaFinMin) || // Nueva cita termina durante una existente
-        (inicioMinutos <= citaInicioMin && finMinutos >= citaFinMin) // Nueva cita engloba una existente
+  async create(req = request, res = response) {
+    const t = await sequelize.transaction();
+    try {
+      console.log(
+        "Datos recibidos para crear cita:",
+        JSON.stringify(req.body, null, 2)
       );
-    });
 
-    if (tieneConflicto) {
-      await t.rollback();
-      return res.status(400).json({
-        mensaje: "El barbero ya tiene citas en ese horario",
-        conflictoCon: citasSolapadas.map((c) => ({
-          id: c.id,
-          hora: c.hora,
-          horaFin: c.horaFin,
-          servicioID: c.servicioID,
-        })),
-      });
-    }
+      // Validaciones mejoradas
+      const requiredFields = ["barberoID", "servicioID", "fecha", "hora"];
 
-    // Preparar datos de la cita - CORREGIDO
-    const nuevaCita = {
-      servicioID: req.body.servicioID,
-      barberoID: req.body.barberoID,
-      fecha: req.body.fecha,
-      hora: hora,
-      horaFin: horaFinFormatted,
-      duracionReal: servicio.duracionMaxima,
-      duracionRedondeada: `${Math.floor(duracionMinutos / 60)}:${(
-        duracionMinutos % 60
-      )
-        .toString()
-        .padStart(2, "0")}:00`,
-      estado: "Confirmada",
-      direccion: req.body.direccion || "En barbería",
-    };
-
-    // Asignar cliente - CORREGIDO
-    if (req.body.pacienteID) {
-      // Verificar que el cliente existe
-      const cliente = await Cliente.findByPk(req.body.pacienteID, {
-        transaction: t,
-      });
-      if (!cliente) {
+      const missingFields = requiredFields.filter((field) => !req.body[field]);
+      if (missingFields.length > 0) {
         await t.rollback();
-        return res.status(404).json({
-          mensaje: "Cliente no encontrado",
-          pacienteID: req.body.pacienteID,
+        return res.status(400).json({
+          mensaje: `Faltan campos requeridos: ${missingFields.join(", ")}`,
+          camposFaltantes: missingFields,
         });
       }
-      nuevaCita.pacienteID = req.body.pacienteID;
-    } else {
-      // Para clientes temporales, NO establecer pacienteID
-      nuevaCita.pacienteTemporalNombre =
-        req.body.pacienteTemporalNombre.trim();
-      if (req.body.pacienteTemporalTelefono) {
-        nuevaCita.pacienteTemporalTelefono =
-          req.body.pacienteTemporalTelefono.trim();
+
+      // Verificar que el barbero existe
+      const barbero = await Barbero.findByPk(req.body.barberoID, {
+        include: [{ model: Usuario, as: "usuario" }],
+        transaction: t,
+      });
+
+      if (!barbero) {
+        await t.rollback();
+        return res.status(404).json({
+          mensaje: "Barbero no encontrado",
+          barberoID: req.body.barberoID,
+        });
       }
-    }
 
-    // CORRECCIÓN: Remover pacienteID si es undefined/null
-    const datosFinales = { ...nuevaCita };
-    if (
-      datosFinales.pacienteID === null ||
-      datosFinales.pacienteID === undefined
-    ) {
-      delete datosFinales.pacienteID;
-    }
+      // Verificar que el servicio existe
+      const servicio = await Servicio.findByPk(req.body.servicioID, {
+        transaction: t,
+      });
+      if (!servicio) {
+        await t.rollback();
+        return res.status(404).json({
+          mensaje: "Servicio no encontrado",
+          servicioID: req.body.servicioID,
+        });
+      }
 
-    // Crear la cita con los datos corregidos
-    const citaCreada = await Cita.create(datosFinales, { transaction: t });
+      // Validar cliente o cliente temporal - CORREGIDO
+      if (!req.body.pacienteID && !req.body.pacienteTemporalNombre) {
+        await t.rollback();
+        return res.status(400).json({
+          mensaje: "Se requiere pacienteID o pacienteTemporalNombre",
+        });
+      }
 
-    // Obtener información completa para notificaciones
-    const servicioInfo = await Servicio.findByPk(req.body.servicioID, {
-      transaction: t
-    });
-    
-    let clienteNombre = "";
-    let clienteUsuarioId = null;
-    
-    if (req.body.pacienteID) {
-      const clienteInfo = await Cliente.findByPk(req.body.pacienteID, {
+      // Si es cliente temporal, NO debe tener pacienteID
+      if (req.body.pacienteTemporalNombre && req.body.pacienteID) {
+        await t.rollback();
+        return res.status(400).json({
+          mensaje:
+            "No se puede enviar pacienteID y pacienteTemporalNombre simultáneamente",
+        });
+      }
+
+      // Formatear hora correctamente
+      let hora = req.body.hora;
+      if (!hora.includes(":")) {
+        hora = `${hora}:00`;
+      } else if (hora.split(":").length === 2) {
+        hora = `${hora}:00`;
+      }
+
+      // Calcular duración y hora de fin
+      const [horas, minutos] = servicio.duracionMaxima.split(":").map(Number);
+      const duracionMinutos = horas * 60 + minutos;
+      const horaFin = new Date(`2000-01-01T${hora}`);
+      horaFin.setMinutes(horaFin.getMinutes() + duracionMinutos);
+
+      const horaFinFormatted = `${horaFin
+        .getHours()
+        .toString()
+        .padStart(2, "0")}:${horaFin
+        .getMinutes()
+        .toString()
+        .padStart(2, "0")}:00`;
+
+      // Verificar disponibilidad - LÓGICA CORREGIDA
+      const citasSolapadas = await Cita.findAll({
+        where: {
+          barberoID: req.body.barberoID,
+          fecha: req.body.fecha,
+          estado: { [Op.notIn]: ["Cancelada", "Expirada"] },
+        },
+        transaction: t,
+      });
+
+      // Convertir a minutos para comparación
+      const [horaH, horaM] = hora.split(":").map(Number);
+      const horaFinH = horaFin.getHours();
+      const horaFinM = horaFin.getMinutes();
+
+      const inicioMinutos = horaH * 60 + horaM;
+      const finMinutos = horaFinH * 60 + horaFinM;
+
+      const tieneConflicto = citasSolapadas.some((cita) => {
+        const [citaHoraH, citaHoraM] = cita.hora.split(":").map(Number);
+        const [citaHoraFinH, citaHoraFinM] = cita.horaFin
+          .split(":")
+          .map(Number);
+
+        const citaInicioMin = citaHoraH * 60 + citaHoraM;
+        const citaFinMin = citaHoraFinH * 60 + citaHoraFinM;
+
+        // Verificar si los rangos se solapan
+        return (
+          (inicioMinutos >= citaInicioMin && inicioMinutos < citaFinMin) || // Nueva cita empieza durante una existente
+          (finMinutos > citaInicioMin && finMinutos <= citaFinMin) || // Nueva cita termina durante una existente
+          (inicioMinutos <= citaInicioMin && finMinutos >= citaFinMin) // Nueva cita engloba una existente
+        );
+      });
+
+      if (tieneConflicto) {
+        await t.rollback();
+        return res.status(400).json({
+          mensaje: "El barbero ya tiene citas en ese horario",
+          conflictoCon: citasSolapadas.map((c) => ({
+            id: c.id,
+            hora: c.hora,
+            horaFin: c.horaFin,
+            servicioID: c.servicioID,
+          })),
+        });
+      }
+
+      // Preparar datos de la cita - CORREGIDO
+      const nuevaCita = {
+        servicioID: req.body.servicioID,
+        barberoID: req.body.barberoID,
+        fecha: req.body.fecha,
+        hora: hora,
+        horaFin: horaFinFormatted,
+        duracionReal: servicio.duracionMaxima,
+        duracionRedondeada: `${Math.floor(duracionMinutos / 60)}:${(
+          duracionMinutos % 60
+        )
+          .toString()
+          .padStart(2, "0")}:00`,
+        estado: "Confirmada",
+        direccion: req.body.direccion || "En barbería",
+      };
+
+      // Asignar cliente - CORREGIDO
+      if (req.body.pacienteID) {
+        // Verificar que el cliente existe
+        const cliente = await Cliente.findByPk(req.body.pacienteID, {
+          transaction: t,
+        });
+        if (!cliente) {
+          await t.rollback();
+          return res.status(404).json({
+            mensaje: "Cliente no encontrado",
+            pacienteID: req.body.pacienteID,
+          });
+        }
+        nuevaCita.pacienteID = req.body.pacienteID;
+      } else {
+        // Para clientes temporales, NO establecer pacienteID
+        nuevaCita.pacienteTemporalNombre =
+          req.body.pacienteTemporalNombre.trim();
+        if (req.body.pacienteTemporalTelefono) {
+          nuevaCita.pacienteTemporalTelefono =
+            req.body.pacienteTemporalTelefono.trim();
+        }
+      }
+
+      // CORRECCIÓN: Remover pacienteID si es undefined/null
+      const datosFinales = { ...nuevaCita };
+      if (
+        datosFinales.pacienteID === null ||
+        datosFinales.pacienteID === undefined
+      ) {
+        delete datosFinales.pacienteID;
+      }
+
+      // Crear la cita con los datos corregidos
+      const citaCreada = await Cita.create(datosFinales, { transaction: t });
+
+      // Crear notificación si el barbero tiene usuario asociado
+      if (barbero.usuario) {
+        try {
+          console.log(
+            "🔔 Intentando crear notificación para barbero:",
+            barbero.usuario.id
+          );
+          await notificationsController.createAppointmentNotification(
+            citaCreada.id,
+            "creacion",
+            { transaction: t } // 👈 Asegúrate de pasar la transacción
+          );
+        } catch (notifError) {
+          console.error("❌ Error al crear notificación:", notifError);
+          // No hacemos rollback por un error en la notificación
+        }
+      } else {
+        console.log(
+          "⚠️ Barbero no tiene usuario asociado, no se crea notificación"
+        );
+      }
+
+        // ENVÍO DE EMAIL AL BARBERO - AÑADE ESTE BLOQUE
+    try {
+      // Obtener información completa para el email
+      const barberoConEmail = await Barbero.findByPk(req.body.barberoID, {
         include: [{ model: Usuario, as: "usuario" }],
         transaction: t
       });
-      clienteNombre = clienteInfo.nombre;
-      clienteUsuarioId = clienteInfo.usuario?.id || null;
-    } else {
-      clienteNombre = req.body.pacienteTemporalNombre;
-    }
-
-    // Obtener instancia de Socket.io
-    const io = req.app.get("io");
-    
-    // 1. NOTIFICAR AL BARBERO
-    if (barbero.usuario) {
-      try {
-        // Crear notificación en BD
-        await notificationsController.createAppointmentNotification(
-          citaCreada.id,
-          "creacion",
-          { transaction: t }
-        );
-        
-        // Emitir evento socket al barbero
-        io.to(`user_${barbero.usuario.id}`).emit('nueva_cita', {
-          tipo: 'creacion',
-          mensaje: `Tienes una nueva cita con ${clienteNombre} para el ${req.body.fecha} a las ${hora.split(':')[0]}:${hora.split(':')[1]}`,
-          cita: citaCreada,
-          usuarioID: barbero.usuario.id
-        });
-        
-        console.log(`📢 Notificación enviada al barbero: ${barbero.usuario.id}`);
-      } catch (notifError) {
-        console.error("❌ Error al notificar barbero:", notifError);
-      }
-    }
-
-    // 2. NOTIFICAR AL CLIENTE (si no es temporal y tiene usuario)
-    if (clienteUsuarioId) {
-      try {
-        // Crear notificación para el cliente
-        await Notificacion.create({
-          usuarioID: clienteUsuarioId,
-          titulo: "📅 Cita confirmada",
-          cuerpo: `Tu cita con ${barbero.nombre} ha sido confirmada para el ${req.body.fecha} a las ${hora.split(':')[0]}:${hora.split(':')[1]}`,
-          tipo: "cita_confirmada",
-          relacionId: citaCreada.id,
-          leido: false
-        }, { transaction: t });
-        
-        // Emitir evento socket al cliente
-        io.to(`user_${clienteUsuarioId}`).emit('nueva_cita', {
-          tipo: 'confirmacion',
-          mensaje: `Tu cita con ${barbero.nombre} ha sido confirmada para el ${req.body.fecha} a las ${hora.split(':')[0]}:${hora.split(':')[1]}`,
-          cita: citaCreada,
-          usuarioID: clienteUsuarioId
-        });
-        
-        console.log(`📢 Notificación enviada al cliente: ${clienteUsuarioId}`);
-      } catch (error) {
-        console.error("❌ Error al notificar cliente:", error);
-      }
-    }
-
-    // 3. NOTIFICAR A LOS ADMINISTRADORES
-    try {
-      const administradores = await Usuario.findAll({
-        include: [{
-          model: Rol,
-          as: "rol",
-          where: { nombre: "Administrador" }
-        }],
+      
+      const servicioInfo = await Servicio.findByPk(req.body.servicioID, {
         transaction: t
       });
-
-      for (const admin of administradores) {
-        // Crear notificación para cada admin
-        await Notificacion.create({
-          usuarioID: admin.id,
-          titulo: "📅 Nueva cita creada",
-          cuerpo: `Se ha creado una nueva cita: ${clienteNombre} con ${barbero.nombre} para el ${req.body.fecha} a las ${hora.split(':')[0]}:${hora.split(':')[1]}`,
-          tipo: "cita_creada",
-          relacionId: citaCreada.id,
-          leido: false
-        }, { transaction: t });
-        
-        // Emitir evento socket a cada admin
-        io.to(`user_${admin.id}`).emit('nueva_cita', {
-          tipo: 'creacion_admin',
-          mensaje: `Nueva cita: ${clienteNombre} con ${barbero.nombre} para el ${req.body.fecha}`,
-          cita: citaCreada,
-          usuarioID: admin.id
+      
+      let clienteNombre = "";
+      if (req.body.pacienteID) {
+        const clienteInfo = await Cliente.findByPk(req.body.pacienteID, {
+          transaction: t
         });
-        
-        console.log(`📢 Notificación enviada al admin: ${admin.id}`);
+        clienteNombre = clienteInfo.nombre;
+      } else {
+        clienteNombre = req.body.pacienteTemporalNombre;
       }
-    } catch (error) {
-      console.error("❌ Error al notificar administradores:", error);
-    }
 
-    // ENVÍO DE EMAIL AL BARBERO
-    try {
-      if (barbero.usuario && barbero.usuario.email) {
+      if (barberoConEmail && barberoConEmail.usuario && barberoConEmail.usuario.email) {
         const fechaHora = new Date(`${req.body.fecha}T${hora}`);
         
         const emailContent = correos.notificacionCitaBarbero({
@@ -792,7 +725,7 @@ async create(req = request, res = response) {
         });
         
         await sendEmail({
-          to: barbero.usuario.email,
+          to: barberoConEmail.usuario.email,
           subject: 'Nueva cita agendada - Barbería',
           html: emailContent
         });
@@ -801,23 +734,24 @@ async create(req = request, res = response) {
       }
     } catch (emailError) {
       console.error('❌ Error al enviar email de notificación:', emailError);
+      // No hacemos rollback por error en el email
     }
 
-    await t.commit();
+      await t.commit();
 
-    return res.status(201).json({
-      mensaje: "Cita creada exitosamente",
-      cita: citaCreada,
-    });
-  } catch (error) {
-    await t.rollback();
-    console.error("Error completo al crear cita:", error);
-    return res.status(500).json({
-      mensaje: "Error interno al crear la cita",
-      error: process.env.NODE_ENV === "development" ? error.message : null,
-    });
+      return res.status(201).json({
+        mensaje: "Cita creada exitosamente",
+        cita: citaCreada,
+      });
+    } catch (error) {
+      await t.rollback();
+      console.error("Error completo al crear cita:", error);
+      return res.status(500).json({
+        mensaje: "Error interno al crear la cita",
+        error: process.env.NODE_ENV === "development" ? error.message : null,
+      });
+    }
   }
-}
 
   async createByPatient(req = request, res = response) {
     try {
