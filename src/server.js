@@ -55,6 +55,11 @@ export class Server {
         // Eventos de conexión
         this.io.on("connection", (socket) => {
             console.log("🟢 Cliente conectado:", socket.id);
+              // Unir al socket a una room específica por usuarioID
+  socket.on("join-user-room", (userID) => {
+    socket.join(`user_${userID}`);
+    console.log(`👤 Usuario ${userID} unido a su room: user_${userID}`);
+  });
 
             socket.on("disconnect", () => {
                 console.log("🔴 Cliente desconectado:", socket.id);
