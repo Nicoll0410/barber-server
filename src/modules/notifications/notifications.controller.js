@@ -100,7 +100,6 @@ io.emit("newNotification", {
         }
     }
 
-// notifications.controller.js - REEMPLAZAR la función completa
 async createAppointmentNotification(citaId, tipo, options = {}) {
     try {
         console.log("🔔 CREANDO NOTIFICACIÓN - Cita ID:", citaId, "Tipo:", tipo, "Destinatario:", options.destinatario);
@@ -113,10 +112,11 @@ async createAppointmentNotification(citaId, tipo, options = {}) {
                 },
                 { 
                     model: Barbero, 
-                    as: "barbero", 
+                    as: "barbero",
                     include: [{ 
                         model: Usuario, 
-                        as: "usuario" 
+                        as: "usuario",
+                        attributes: ['id', 'email'] // Especificar campos necesarios
                     }] 
                 },
                 { 
@@ -124,7 +124,8 @@ async createAppointmentNotification(citaId, tipo, options = {}) {
                     as: "cliente",
                     include: [{
                         model: Usuario,
-                        as: "usuario"
+                        as: "usuario",
+                        attributes: ['id', 'email']
                     }]
                 }
             ],
@@ -152,11 +153,23 @@ async createAppointmentNotification(citaId, tipo, options = {}) {
 
         switch (options.destinatario) {
             case "barbero":
-                if (!cita.barbero?.usuario) {
-                    console.log("❌ Barbero no tiene usuario asociado");
+                // CORRECCIÓN: Verificar correctamente la estructura del barbero
+                if (!cita.barbero || !cita.barbero.usuarioID) {
+                    console.log("❌ Barbero no tiene usuario asociado o no se cargó correctamente");
                     return null;
                 }
-                usuarioId = cita.barbero.usuario.id;
+                
+                // Buscar el usuario del barbero directamente por ID
+                const usuarioBarbero = await Usuario.findByPk(cita.barbero.usuarioID, {
+                    transaction: options.transaction
+                });
+                
+                if (!usuarioBarbero) {
+                    console.log("❌ Usuario del barbero no encontrado");
+                    return null;
+                }
+                
+                usuarioId = usuarioBarbero.id;
                 
                 if (tipo === "creacion") {
                     titulo = "📅 Nueva cita agendada";
@@ -175,6 +188,7 @@ async createAppointmentNotification(citaId, tipo, options = {}) {
                         as: "rol",
                         where: { nombre: "Administrador" }
                     }],
+                    attributes: ['id'],
                     transaction: options.transaction
                 });
                 
@@ -194,11 +208,22 @@ async createAppointmentNotification(citaId, tipo, options = {}) {
                 return administradores.length > 0 ? { multiple: true } : null;
 
             case "cliente":
-                if (!cita.cliente?.usuario) {
+                if (!cita.cliente || !cita.cliente.usuarioID) {
                     console.log("❌ Cliente no tiene usuario asociado");
                     return null;
                 }
-                usuarioId = cita.cliente.usuario.id;
+                
+                // Buscar el usuario del cliente directamente por ID
+                const usuarioCliente = await Usuario.findByPk(cita.cliente.usuarioID, {
+                    transaction: options.transaction
+                });
+                
+                if (!usuarioCliente) {
+                    console.log("❌ Usuario del cliente no encontrado");
+                    return null;
+                }
+                
+                usuarioId = usuarioCliente.id;
                 
                 if (tipo === "creacion") {
                     titulo = "📅 Cita confirmada";

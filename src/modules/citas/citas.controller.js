@@ -676,20 +676,18 @@ try {
     const io = req.app.get("io");
     
     // 1. Notificación para el BARBERO
-    if (barbero.usuario) {
-        await notificationsController.createAppointmentNotification(
-            citaCreada.id,
-            "creacion",
-            { 
-                transaction: t,
-                io: io,
-                destinatario: "barbero"
-            }
-        );
-    }
+    await notificationsController.createAppointmentNotification(
+        citaCreada.id,
+        "creacion",
+        { 
+            transaction: t,
+            io: io,
+            destinatario: "barbero"
+        }
+    );
     
     // 2. Notificación para el ADMINISTRADOR (si no es el mismo que creó la cita)
-    const usuarioActual = await obtenerUsuarioActualDesdeToken(req);
+    const usuarioActual = await this.obtenerUsuarioActualDesdeToken(req);
     if (usuarioActual && usuarioActual.rol !== "Barbero") {
         await notificationsController.createAppointmentNotification(
             citaCreada.id,
@@ -702,14 +700,13 @@ try {
         );
     }
     
-    // 3. Notificación para el CLIENTE (si no es temporal)
+    // 3. Notificación para el CLIENTE (si no es temporal y tiene usuario)
     if (req.body.pacienteID) {
         const cliente = await Cliente.findByPk(req.body.pacienteID, {
-            include: [{ model: Usuario, as: "usuario" }],
             transaction: t
         });
         
-        if (cliente && cliente.usuario) {
+        if (cliente && cliente.usuarioID) {
             await notificationsController.createAppointmentNotification(
                 citaCreada.id,
                 "creacion",
