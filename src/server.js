@@ -2,7 +2,7 @@
 import express from "express";
 import cors from "cors";
 import morgan from "morgan";
-import http from "http";
+import http from "http"; // 👈 necesario para socket.io
 import { Server as SocketIOServer } from "socket.io";
 
 import { jwtMiddlewares } from "./middlewares/jwt.middleware.js";
@@ -42,8 +42,7 @@ export class Server {
                     "https://nmbarberapp-seven.vercel.app",
                     "http://localhost:3000",
                     "http://localhost:8081",
-                    "http://localhost:19006",
-                    "exp://192.168.1.X:19000" // Agrega tu IP local para desarrollo móvil
+                    "http://localhost:19006"
                 ],
                 methods: ["GET", "POST", "PUT", "DELETE"],
                 credentials: true
@@ -53,41 +52,14 @@ export class Server {
         // Guardar instancia global de io para usar en controladores
         this.app.set("io", this.io);
 
-        // Almacenar conexiones de usuarios
-        this.userSockets = new Map();
-
-        // Eventos de conexión mejorados
+        // Eventos de conexión
         this.io.on("connection", (socket) => {
             console.log("🟢 Cliente conectado:", socket.id);
 
-            // Unir usuario a su sala personal cuando se autentica
-            socket.on("join-user-room", (userId) => {
-                socket.join(`user_${userId}`);
-                this.userSockets.set(userId, socket.id);
-                console.log(`👤 Usuario ${userId} unido a su sala (Socket: ${socket.id})`);
-            });
-
-            // Manejar desconexión
             socket.on("disconnect", () => {
-                // Eliminar usuario de la lista de conexiones
-                for (let [userId, socketId] of this.userSockets.entries()) {
-                    if (socketId === socket.id) {
-                        this.userSockets.delete(userId);
-                        console.log(`👤 Usuario ${userId} desconectado`);
-                        break;
-                    }
-                }
                 console.log("🔴 Cliente desconectado:", socket.id);
             });
-
-            // Manejar errores de socket
-            socket.on("error", (error) => {
-                console.error("❌ Error de Socket:", error);
-            });
         });
-
-        // Guardar instancia de userSockets para uso global
-        this.app.set("userSockets", this.userSockets);
 
         // Sincronizar modelos y levantar servidor
         syncAllModels()
@@ -105,17 +77,17 @@ export class Server {
     }
 
     middlewares() {
-        // Configuración de CORS
+        // Configuración de CORS CORREGIDA
         const allowedOrigins = [
             "https://nmbarberapp-seven.vercel.app",
             "http://localhost:3000",
             "http://localhost:8081",
-            "http://localhost:19006",
-            "exp://192.168.1.X:19000" // Agrega tu IP local
+            "http://localhost:19006"
         ];
 
         this.app.use(cors({
             origin: function (origin, callback) {
+                // Permitir requests sin origin (como mobile apps, postman, curl)
                 if (!origin) return callback(null, true);
                 
                 if (allowedOrigins.indexOf(origin) !== -1) {
