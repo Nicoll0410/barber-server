@@ -25,6 +25,7 @@ import jwt from "jsonwebtoken";
 import { Insumo } from "../insumos/insumos.model.js";
 import { sequelize } from "../../database.js";
 import notificationsController from "../notifications/notifications.controller.js";
+import { Notificacion } from "../notifications/notifications.model.js";
 
 class CitasController {
   async get(req = request, res = response) {
@@ -651,110 +652,110 @@ class CitasController {
 
       const citaCreada = await Cita.create(datosFinales, { transaction: t });
 
-// 👇 NUEVO: Enviar notificaciones en tiempo real
-try {
-  const usuarioCreador = await Usuario.findByPk(req.user.id, {
-    include: [{ model: Rol, as: 'rol' }],
-    transaction: t
-  });
-  
-  // Obtener instancia de io
-  const io = req.app.get("io");
-  
-  // Determinar destinatarios según el rol del creador
-  let destinatarios = [];
-  
-  if (usuarioCreador.rol.nombre === 'administrador') {
-    // Admin crea -> notificar a barbero y cliente
-    if (citaCreada.barberoID) destinatarios.push(citaCreada.barberoID);
-    if (citaCreada.pacienteID) destinatarios.push(citaCreada.pacienteID);
-  } 
-  else if (usuarioCreador.rol.nombre === 'barbero') {
-    // Barbero crea -> notificar a admins y cliente
-    const administradores = await Usuario.findAll({
-      include: [{
-        model: Rol,
-        as: 'rol',
-        where: { nombre: 'administrador' }
-      }],
-      transaction: t
-    });
-    destinatarios = administradores.map(admin => admin.id);
-    if (citaCreada.pacienteID) destinatarios.push(citaCreada.pacienteID);
-  } 
-  else if (usuarioCreador.rol.nombre === 'cliente') {
-    // Cliente crea -> notificar a barbero y admins
-    if (citaCreada.barberoID) destinatarios.push(citaCreada.barberoID);
-    const administradores = await Usuario.findAll({
-      include: [{
-        model: Rol,
-        as: 'rol',
-        where: { nombre: 'administrador' }
-      }],
-      transaction: t
-    });
-    destinatarios = [...destinatarios, ...administradores.map(admin => admin.id)];
-  }
-
-  // Eliminar duplicados y al creador de la notificación
-  destinatarios = [...new Set(destinatarios)].filter(id => id !== usuarioCreador.id);
-
-  // Obtener información completa para la notificación
-  const citaCompleta = await Cita.findByPk(citaCreada.id, {
-    include: [
-      { model: Servicio, as: 'servicio' },
-      { model: Barbero, as: 'barbero' },
-      { model: Cliente, as: 'cliente' }
-    ],
-    transaction: t
-  });
-
-  // Crear mensaje de notificación
-  const fechaFormateada = new Date(citaCompleta.fecha).toLocaleDateString("es-ES");
-  const mensaje = `Nueva cita: ${citaCompleta.servicio?.nombre} - ${fechaFormateada} ${citaCompleta.hora}`;
-
-  // Enviar notificación a cada destinatario
-  for (const destinatarioId of destinatarios) {
-    // Crear notificación en BD
-    const notificacion = await Notificacion.create({
-      usuarioID: destinatarioId,
-      titulo: '📅 Nueva Cita',
-      cuerpo: mensaje,
-      tipo: 'cita_creada',
-      relacionId: citaCreada.id,
-      leido: false
-    }, { transaction: t });
-
-    // Emitir evento Socket.io
-    io.to(`usuario_${destinatarioId}`).emit('nueva_notificacion', {
-      ...notificacion.toJSON(),
-      sound: true,
-      cita: citaCompleta
-    });
-
-    // Enviar push notification si tiene token
-    const usuarioDestino = await Usuario.findByPk(destinatarioId, {
-      transaction: t
-    });
-    
-    if (usuarioDestino && usuarioDestino.expo_push_token) {
-      await notificationsController.sendPushNotification({
-        userId: destinatarioId,
-        titulo: '📅 Nueva Cita',
-        cuerpo: mensaje,
-        data: {
-          type: "cita",
-          citaId: citaCreada.id,
-          screen: "DetalleCita"
+      // 👇 NUEVO: Enviar notificaciones en tiempo real
+      try {
+        const usuarioCreador = await Usuario.findByPk(req.user.id, {
+          include: [{ model: Rol, as: 'rol' }],
+          transaction: t
+        });
+        
+        // Obtener instancia de io
+        const io = req.app.get("io");
+        
+        // Determinar destinatarios según el rol del creador
+        let destinatarios = [];
+        
+        if (usuarioCreador.rol.nombre === 'administrador') {
+          // Admin crea -> notificar a barbero y cliente
+          if (citaCreada.barberoID) destinatarios.push(citaCreada.barberoID);
+          if (citaCreada.pacienteID) destinatarios.push(citaCreada.pacienteID);
+        } 
+        else if (usuarioCreador.rol.nombre === 'barbero') {
+          // Barbero crea -> notificar a admins y cliente
+          const administradores = await Usuario.findAll({
+            include: [{
+              model: Rol,
+              as: 'rol',
+              where: { nombre: 'administrador' }
+            }],
+            transaction: t
+          });
+          destinatarios = administradores.map(admin => admin.id);
+          if (citaCreada.pacienteID) destinatarios.push(citaCreada.pacienteID);
+        } 
+        else if (usuarioCreador.rol.nombre === 'cliente') {
+          // Cliente crea -> notificar a barbero y admins
+          if (citaCreada.barberoID) destinatarios.push(citaCreada.barberoID);
+          const administradores = await Usuario.findAll({
+            include: [{
+              model: Rol,
+              as: 'rol',
+              where: { nombre: 'administrador' }
+            }],
+            transaction: t
+          });
+          destinatarios = [...destinatarios, ...administradores.map(admin => admin.id)];
         }
-      });
-    }
-  }
 
-} catch (notifError) {
-  console.error("❌ Error en notificaciones:", notifError);
-  // No hacer rollback por error en notificaciones
-}
+        // Eliminar duplicados y al creador de la notificación
+        destinatarios = [...new Set(destinatarios)].filter(id => id !== usuarioCreador.id);
+
+        // Obtener información completa para la notificación
+        const citaCompleta = await Cita.findByPk(citaCreada.id, {
+          include: [
+            { model: Servicio, as: 'servicio' },
+            { model: Barbero, as: 'barbero' },
+            { model: Cliente, as: 'cliente' }
+          ],
+          transaction: t
+        });
+
+        // Crear mensaje de notificación
+        const fechaFormateada = new Date(citaCompleta.fecha).toLocaleDateString("es-ES");
+        const mensaje = `Nueva cita: ${citaCompleta.servicio?.nombre} - ${fechaFormateada} ${citaCompleta.hora}`;
+
+        // Enviar notificación a cada destinatario
+        for (const destinatarioId of destinatarios) {
+          // Crear notificación en BD
+          const notificacion = await Notificacion.create({
+            usuarioID: destinatarioId,
+            titulo: '📅 Nueva Cita',
+            cuerpo: mensaje,
+            tipo: 'cita_creada',
+            relacionId: citaCreada.id,
+            leido: false
+          }, { transaction: t });
+
+          // Emitir evento Socket.io
+          io.to(`usuario_${destinatarioId}`).emit('nueva_notificacion', {
+            ...notificacion.toJSON(),
+            sound: true,
+            cita: citaCompleta
+          });
+
+          // Enviar push notification si tiene token
+          const usuarioDestino = await Usuario.findByPk(destinatarioId, {
+            transaction: t
+          });
+          
+          if (usuarioDestino && usuarioDestino.expo_push_token) {
+            await notificationsController.sendPushNotification({
+              userId: destinatarioId,
+              titulo: '📅 Nueva Cita',
+              cuerpo: mensaje,
+              data: {
+                type: "cita",
+                citaId: citaCreada.id,
+                screen: "DetalleCita"
+              }
+            });
+          }
+        }
+
+      } catch (notifError) {
+        console.error("❌ Error en notificaciones:", notifError);
+        // No hacer rollback por error en notificaciones
+      }
 
       try {
         const barberoConEmail = await Barbero.findByPk(req.body.barberoID, {
@@ -794,6 +795,56 @@ try {
         }
       } catch (emailError) {
         console.error('❌ Error al enviar email de notificación:', emailError);
+      }
+
+      // ✅ NUEVO: ACTUALIZAR BADGES EN TIEMPO REAL PARA BARBERO Y CLIENTE
+      try {
+        const io = req.app.get("io");
+        
+        // Obtener usuario del barbero
+        let barberoUsuarioId = null;
+        const barberoConUsuario = await Barbero.findByPk(req.body.barberoID, {
+          include: [{ model: Usuario, as: "usuario" }],
+          transaction: t
+        });
+        if (barberoConUsuario && barberoConUsuario.usuario) {
+          barberoUsuarioId = barberoConUsuario.usuario.id;
+        }
+        
+        // Obtener usuario del cliente (si existe)
+        let clienteUsuarioId = null;
+        if (req.body.pacienteID) {
+          const clienteConUsuario = await Cliente.findByPk(req.body.pacienteID, {
+            include: [{ model: Usuario, as: "usuario" }],
+            transaction: t
+          });
+          if (clienteConUsuario && clienteConUsuario.usuario) {
+            clienteUsuarioId = clienteConUsuario.usuario.id;
+          }
+        }
+        
+        // Emitir eventos para actualizar badges
+        if (barberoUsuarioId) {
+          io.to(`usuario_${barberoUsuarioId}`).emit("actualizar_badge", {
+            usuarioID: barberoUsuarioId,
+            incrementar: true,
+            cantidad: 1
+          });
+          console.log("✅ Badge actualizado para barbero:", barberoUsuarioId);
+        }
+        
+        if (clienteUsuarioId) {
+          io.to(`usuario_${clienteUsuarioId}`).emit("actualizar_badge", {
+            usuarioID: clienteUsuarioId,
+            incrementar: true,
+            cantidad: 1
+          });
+          console.log("✅ Badge actualizado para cliente:", clienteUsuarioId);
+        }
+        
+      } catch (socketError) {
+        console.error("❌ Error emitiendo eventos socket:", socketError);
+        // No hacer rollback por error de socket
       }
 
       await t.commit();
