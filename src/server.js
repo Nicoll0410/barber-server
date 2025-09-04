@@ -52,21 +52,27 @@ export class Server {
     });
 
     // Eventos de conexión
-    this.io.on("connection", (socket) => {
-      console.log("🟢 Cliente conectado:", socket.id);
+this.io.on("connection", (socket) => {
+  console.log("🟢 Cliente conectado:", socket.id);
 
-      // Unir al usuario a su sala personal
-      socket.on("unir_usuario", (usuarioId) => {
-        socket.join(`usuario_${usuarioId}`);
-        console.log(`👤 Usuario ${usuarioId} unido a su sala personal`);
-
-        // Confirmar unión
-        socket.emit("usuario_unido", { success: true, usuarioId });
-      });
-
-  // Debugging de eventos
+  // Debuggear todos los eventos
   socket.onAny((event, ...args) => {
-    console.log(`📦 Evento: ${event}`, args);
+    console.log(`📦 Socket Event: ${event}`, args);
+  });
+
+  // Unir al usuario a su sala personal
+  socket.on("unir_usuario", (usuarioId) => {
+    console.log(`👤 Uniendo usuario ${usuarioId} a sala: usuario_${usuarioId}`);
+    socket.join(`usuario_${usuarioId}`);
+    
+    // Confirmar unión
+    socket.emit("usuario_unido", { 
+      success: true, 
+      usuarioId,
+      room: `usuario_${usuarioId}`
+    });
+    
+    console.log(`✅ Usuario ${usuarioId} unido correctamente`);
   });
 
   socket.on("disconnect", (reason) => {

@@ -809,6 +809,7 @@ class CitasController {
         });
         if (barberoConUsuario && barberoConUsuario.usuario) {
           barberoUsuarioId = barberoConUsuario.usuario.id;
+          console.log("👨‍💼 Barbero usuario ID:", barberoUsuarioId);
         }
         
         // Obtener usuario del cliente (si existe)
@@ -820,28 +821,35 @@ class CitasController {
           });
           if (clienteConUsuario && clienteConUsuario.usuario) {
             clienteUsuarioId = clienteConUsuario.usuario.id;
+            console.log("👤 Cliente usuario ID:", clienteUsuarioId);
           }
         }
         
         // Emitir eventos para actualizar badges
         if (barberoUsuarioId) {
+          console.log("📤 Emitiendo actualizar_badge para barbero:", barberoUsuarioId);
           io.to(`usuario_${barberoUsuarioId}`).emit("actualizar_badge", {
             usuarioID: barberoUsuarioId,
             incrementar: true,
-            cantidad: 1
+            cantidad: 1,
+            timestamp: new Date().toISOString(),
           });
-          console.log("✅ Badge actualizado para barbero:", barberoUsuarioId);
         }
         
         if (clienteUsuarioId) {
+          console.log("📤 Emitiendo actualizar_badge para cliente:", clienteUsuarioId);
           io.to(`usuario_${clienteUsuarioId}`).emit("actualizar_badge", {
             usuarioID: clienteUsuarioId,
             incrementar: true,
-            cantidad: 1
+            cantidad: 1,
+            timestamp: new Date().toISOString()
           });
-          console.log("✅ Badge actualizado para cliente:", clienteUsuarioId);
         }
-        
+          // También emitir broadcast general por si acaso
+  io.emit("actualizar_badge", {
+    broadcast: true,
+    timestamp: new Date().toISOString()
+  });
       } catch (socketError) {
         console.error("❌ Error emitiendo eventos socket:", socketError);
         // No hacer rollback por error de socket
