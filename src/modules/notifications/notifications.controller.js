@@ -9,6 +9,18 @@ import { Cliente } from "../clientes/clientes.model.js";
 import { UsuarioToken } from "./usuarios_tokens.model.js";
 import { Rol } from "../roles/roles.model.js";
 
+function getIO(req) {
+  // Preferir req.app.get("io") (cuando se ejecuta en contexto request)
+  if (req && req.app && req.app.get) {
+    const ioFromApp = req.app.get("io");
+    if (ioFromApp) return ioFromApp;
+  }
+  // Fallback a global (definido en server.js)
+  if (global && global.__io) return global.__io;
+  // Si no hay io, devolvemos null
+  return null;
+}
+
 class NotificationsController {
   async saveToken(req = request, res = response) {
     try {
@@ -75,13 +87,28 @@ class NotificationsController {
         leido: false,
       });
 
-      const io = req.app.get("io");
-      io.emit("newNotification", {
-        usuarioID,
-        titulo,
-        cuerpo,
-        notificacion,
-      });
+      // Emitir sólo a la sala del usuario
+      const io = getIO(req);
+      if (io) {
+        // Calcular unread count actual
+        const unreadCount = await Notificacion.count({
+          where: { usuarioID, leido: false }
+        });
+
+        io.to(`usuario_${usuarioID}`).emit("nueva_notificacion", {
+          ...notificacion.toJSON(),
+          sound: true,
+        });
+
+        // Enviar evento para actualizar badge con el total
+        io.to(`usuario_${usuarioID}`).emit("badge_update", {
+          usuarioID,
+          unread: unreadCount
+        });
+      } else {
+        console.warn("⚠️ createNotification: socket.io no disponible para emitir");
+      }
+
 
       return res.status(201).json({
         success: true,
@@ -98,14 +125,10 @@ class NotificationsController {
     }
   }
 
-  async enviarNotificacionCitaTiempoReal(
-    citaId,
-    usuarioCreadorId,
-    options = {}
-  ) {
+  async enviarNotificacionCitaTiempoReal(citaId, usuarioCreadorId, options = {}) {
     try {
-      const io = require("../../server").io;
-
+      // Intentar obtener io desde global (esta función puede llamarse fuera del contexto de req)
+      const io = getIO();
       const cita = await Cita.findByPk(citaId, {
         include: [
           { model: Servicio, as: "servicio" },
@@ -137,10 +160,8 @@ class NotificationsController {
       const rolCreador = usuarioCreador.rol?.nombre;
 
       if (rolCreador === "administrador") {
-        if (cita.barbero?.usuario?.id)
-          destinatarios.push(cita.barbero.usuario.id);
-        if (cita.cliente?.usuario?.id)
-          destinatarios.push(cita.cliente.usuario.id);
+        if (cita.barbero?.usuario?.id) destinatarios.push(cita.barbero.usuario.id);
+        if (cita.cliente?.usuario?.id) destinatarios.push(cita.cliente.usuario.id);
       } else if (rolCreador === "barbero") {
         const administradores = await Usuario.findAll({
           include: [
@@ -153,11 +174,9 @@ class NotificationsController {
           transaction: options.transaction,
         });
         destinatarios = administradores.map((admin) => admin.id);
-        if (cita.cliente?.usuario?.id)
-          destinatarios.push(cita.cliente.usuario.id);
+        if (cita.cliente?.usuario?.id) destinatarios.push(cita.cliente.usuario.id);
       } else if (rolCreador === "cliente") {
-        if (cita.barbero?.usuario?.id)
-          destinatarios.push(cita.barbero.usuario.id);
+        if (cita.barbero?.usuario?.id) destinatarios.push(cita.barbero.usuario.id);
         const administradores = await Usuario.findAll({
           include: [
             {
@@ -168,16 +187,11 @@ class NotificationsController {
           ],
           transaction: options.transaction,
         });
-        destinatarios = [
-          ...destinatarios,
-          ...administradores.map((admin) => admin.id),
-        ];
+        destinatarios = [...destinatarios, ...administradores.map((admin) => admin.id)];
       }
 
       // Eliminar duplicados y al creador
-      destinatarios = [...new Set(destinatarios)].filter(
-        (id) => id !== usuarioCreadorId
-      );
+      destinatarios = [...new Set(destinatarios)].filter((id) => id !== usuarioCreadorId);
 
       const fechaFormateada = new Date(cita.fecha).toLocaleDateString("es-ES");
       const mensaje = `Nueva cita: ${cita.servicio?.nombre} - ${fechaFormateada} ${cita.hora}`;
@@ -195,27 +209,22 @@ class NotificationsController {
           { transaction: options.transaction }
         );
 
-        // Emitir por socket
-io.to(`usuario_${destinatarioId}`).emit("nueva_notificacion", {
-  id: notificacion.id,
-  usuarioID: destinatarioId, // ← Usar la variable correcta
-  titulo: "📅 Nueva Cita",
-  cuerpo: mensaje,
-  tipo: "cita_creada",
-  relacionId: cita.id,
-  leido: false,
-  createdAt: notificacion.createdAt,
-  updatedAt: notificacion.updatedAt,
-  sound: true,
-  cita: cita
-});
+        if (io) {
+          const unreadCount = await Notificacion.count({
+            where: { usuarioID: destinatarioId, leido: false }
+          });
 
-        // 🎯 ENVIAR EVENTO ESPECIAL PARA ACTUALIZAR BADGE
-        io.to(`usuario_${destinatarioId}`).emit("actualizar_badge", {
-          usuarioID: destinatarioId,
-          incrementar: true,
-          cantidad: 1
-        });
+          io.to(`usuario_${destinatarioId}`).emit("nueva_notificacion", {
+            ...notificacion.toJSON(),
+            sound: true,
+            cita: cita
+          });
+
+          io.to(`usuario_${destinatarioId}`).emit("badge_update", {
+            usuarioID: destinatarioId,
+            unread: unreadCount
+          });
+        }
 
         console.log("✅ Notificación y badge enviados a usuario:", destinatarioId);
 
