@@ -51,22 +51,12 @@ export class Server {
       transports: ['websocket' , 'polling']
     });
 
-    // 🔧 MOD: Exponer io para que controllers lo usen sin fallos por require circular
-    // Setear en express app
-    this.app.set("io", this.io);
-    // También en global para accesos directos (legacy)
-    global.__io = this.io;
-
     // Eventos de conexión
     this.io.on("connection", (socket) => {
       console.log("🟢 Cliente conectado:", socket.id);
 
       // Unir al usuario a su sala personal
       socket.on("unir_usuario", (usuarioId) => {
-        if (!usuarioId) {
-          console.log("⚠️ unir_usuario recibido sin usuarioId", socket.id);
-          return;
-        }
         socket.join(`usuario_${usuarioId}`);
         console.log(`👤 Usuario ${usuarioId} unido a su sala personal`);
 
@@ -74,15 +64,15 @@ export class Server {
         socket.emit("usuario_unido", { success: true, usuarioId });
       });
 
-      // Debugging de eventos
-      socket.onAny((event, ...args) => {
-        console.log(`📦 Evento: ${event}`, args);
-      });
+  // Debugging de eventos
+  socket.onAny((event, ...args) => {
+    console.log(`📦 Evento: ${event}`, args);
+  });
 
-      socket.on("disconnect", (reason) => {
-        console.log("🔴 Cliente desconectado:", socket.id, "Razón:", reason);
-      });
-    });
+  socket.on("disconnect", (reason) => {
+    console.log("🔴 Cliente desconectado:", socket.id, "Razón:", reason);
+  });
+});
 
     // Sincronizar modelos y levantar servidor
     syncAllModels()

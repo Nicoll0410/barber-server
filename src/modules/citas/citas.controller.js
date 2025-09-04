@@ -654,106 +654,106 @@ class CitasController {
 // 👇 NUEVO: Enviar notificaciones en tiempo real
 try {
   const usuarioCreador = await Usuario.findByPk(req.user.id, {
-    include: [{ model: Rol, as: "rol" }],
-    transaction: t,
+    include: [{ model: Rol, as: 'rol' }],
+    transaction: t
   });
-
-  const io = req.app.get("io") || global.__io;
-
-  // Determinar destinatarios (tu lógica original)
+  
+  // Obtener instancia de io
+  const io = req.app.get("io");
+  
+  // Determinar destinatarios según el rol del creador
   let destinatarios = [];
-  const rolNombre = usuarioCreador.rol?.nombre;
-
-  if (rolNombre === "administrador") {
+  
+  if (usuarioCreador.rol.nombre === 'administrador') {
+    // Admin crea -> notificar a barbero y cliente
     if (citaCreada.barberoID) destinatarios.push(citaCreada.barberoID);
     if (citaCreada.pacienteID) destinatarios.push(citaCreada.pacienteID);
-  } else if (rolNombre === "barbero") {
+  } 
+  else if (usuarioCreador.rol.nombre === 'barbero') {
+    // Barbero crea -> notificar a admins y cliente
     const administradores = await Usuario.findAll({
-      include: [
-        {
-          model: Rol,
-          as: "rol",
-          where: { nombre: "administrador" },
-        },
-      ],
-      transaction: t,
+      include: [{
+        model: Rol,
+        as: 'rol',
+        where: { nombre: 'administrador' }
+      }],
+      transaction: t
     });
-    destinatarios = administradores.map((admin) => admin.id);
+    destinatarios = administradores.map(admin => admin.id);
     if (citaCreada.pacienteID) destinatarios.push(citaCreada.pacienteID);
-  } else if (rolNombre === "cliente") {
+  } 
+  else if (usuarioCreador.rol.nombre === 'cliente') {
+    // Cliente crea -> notificar a barbero y admins
     if (citaCreada.barberoID) destinatarios.push(citaCreada.barberoID);
     const administradores = await Usuario.findAll({
-      include: [
-        {
-          model: Rol,
-          as: "rol",
-          where: { nombre: "administrador" },
-        },
-      ],
-      transaction: t,
+      include: [{
+        model: Rol,
+        as: 'rol',
+        where: { nombre: 'administrador' }
+      }],
+      transaction: t
     });
-    destinatarios = [...destinatarios, ...administradores.map((a) => a.id)];
+    destinatarios = [...destinatarios, ...administradores.map(admin => admin.id)];
   }
 
-  destinatarios = [...new Set(destinatarios)].filter((id) => id !== usuarioCreador.id);
+  // Eliminar duplicados y al creador de la notificación
+  destinatarios = [...new Set(destinatarios)].filter(id => id !== usuarioCreador.id);
 
-  // Obtener info completa para mensaje
+  // Obtener información completa para la notificación
   const citaCompleta = await Cita.findByPk(citaCreada.id, {
-    include: [{ model: Servicio, as: "servicio" }, { model: Barbero, as: "barbero" }, { model: Cliente, as: "cliente" }],
-    transaction: t,
+    include: [
+      { model: Servicio, as: 'servicio' },
+      { model: Barbero, as: 'barbero' },
+      { model: Cliente, as: 'cliente' }
+    ],
+    transaction: t
   });
 
+  // Crear mensaje de notificación
   const fechaFormateada = new Date(citaCompleta.fecha).toLocaleDateString("es-ES");
   const mensaje = `Nueva cita: ${citaCompleta.servicio?.nombre} - ${fechaFormateada} ${citaCompleta.hora}`;
 
+  // Enviar notificación a cada destinatario
   for (const destinatarioId of destinatarios) {
+    // Crear notificación en BD
     const notificacion = await Notificacion.create({
       usuarioID: destinatarioId,
-      titulo: "📅 Nueva Cita",
+      titulo: '📅 Nueva Cita',
       cuerpo: mensaje,
-      tipo: "cita_creada",
+      tipo: 'cita_creada',
       relacionId: citaCreada.id,
-      leido: false,
+      leido: false
     }, { transaction: t });
 
-    // Emitir por socket solo a la sala del usuario
-    if (io) {
-      const unreadCount = await Notificacion.count({
-        where: { usuarioID: destinatarioId, leido: false },
-      });
+    // Emitir evento Socket.io
+    io.to(`usuario_${destinatarioId}`).emit('nueva_notificacion', {
+      ...notificacion.toJSON(),
+      sound: true,
+      cita: citaCompleta
+    });
 
-      io.to(`usuario_${destinatarioId}`).emit("nueva_notificacion", {
-        ...notificacion.toJSON(),
-        sound: true,
-        cita: citaCompleta,
-      });
-
-      // Evento para actualizar badge con conteo real
-      io.to(`usuario_${destinatarioId}`).emit("badge_update", {
-        usuarioID: destinatarioId,
-        unread: unreadCount
-      });
-    }
-
-    // Push
-    const usuarioDestino = await Usuario.findByPk(destinatarioId, { transaction: t });
-    if (usuarioDestino?.expo_push_token) {
+    // Enviar push notification si tiene token
+    const usuarioDestino = await Usuario.findByPk(destinatarioId, {
+      transaction: t
+    });
+    
+    if (usuarioDestino && usuarioDestino.expo_push_token) {
       await notificationsController.sendPushNotification({
         userId: destinatarioId,
         titulo: '📅 Nueva Cita',
         cuerpo: mensaje,
         data: {
           type: "cita",
-          citaId: citaCompleta.id,
-          screen: "DetalleCita",
-          notificacionId: notificacion.id
+          citaId: citaCreada.id,
+          screen: "DetalleCita"
         }
       });
     }
   }
+
 } catch (notifError) {
   console.error("❌ Error en notificaciones:", notifError);
-  // No deshacer la creación de la cita por fallo en notificaciones
+  // No hacer rollback por error en notificaciones
 }
 
       try {
