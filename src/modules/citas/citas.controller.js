@@ -1101,15 +1101,21 @@ class CitasController {
         });
       }
 
-      const ahora = new Date();
-      const fechaCita = new Date(`${cita.fecha}T${cita.hora}`);
+    // CORRECCIÓN: Crear fecha/hora de la cita considerando zona horaria
+    const ahora = new Date();
+    const fechaCita = new Date(`${cita.fecha}T${cita.hora}:00-05:00`); // ← Añadir zona horaria
 
-      if (fechaCita < ahora) {
-        await t.rollback();
-        return res.status(400).json({
-          mensaje: "No se puede cancelar una cita que ya pasó",
-        });
-      }
+    // CORRECCIÓN: Comparar con la hora actual considerando la diferencia
+    const diferenciaMs = fechaCita.getTime() - ahora.getTime();
+    const diferenciaMinutos = diferenciaMs / (1000 * 60);
+
+    // Permitir cancelar hasta 5 minutos antes de la cita
+    if (diferenciaMinutos < 5) {
+      await t.rollback();
+      return res.status(400).json({
+        mensaje: "Solo se pueden cancelar citas con al menos 5 minutos de anticipación",
+      });
+    }
 
       await cita.update({ estado: "Cancelada" }, { transaction: t });
 
