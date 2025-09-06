@@ -1,5 +1,5 @@
 import { QueryTypes } from 'sequelize';
-import { sequelize } from '../database.js';
+import { sequelize } from '../src/database';
 
 export async function up() {
   try {
