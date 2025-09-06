@@ -1,13 +1,13 @@
 import { Op } from "sequelize";
 import { format, addMinutes } from "date-fns";
 import { es } from "date-fns/locale";
-import { Cita } from "../src/modules/citas/citas.model.js";
-import { Barbero } from "../src/modules/barberos/barberos.model.js";
-import { Cliente } from "../src/modules/clientes/clientes.model.js";
-import { Servicio } from "../src/modules/servicios/servicios.model.js";
-import { Usuario } from "../src/modules/usuarios/usuarios.model.js";
-import { sendEmail } from "../src/utils/send-email.util.js";
-import { correos } from "../src/utils/correos.util.js";
+import { Cita } from "../modules/citas/citas.model.js";
+import { Barbero } from "../modules/barberos/barberos.model.js";
+import { Cliente } from "../modules/clientes/clientes.model.js";
+import { Servicio } from "../modules/servicios/servicios.model.js";
+import { Usuario } from "../modules/usuarios/usuarios.model.js";
+import { sendEmail } from "../utils/send-email.util.js";
+import { correos } from "../utils/correos.util.js";
 import cron from "node-cron";
 
 export class RecordatoriosCitasJob {
