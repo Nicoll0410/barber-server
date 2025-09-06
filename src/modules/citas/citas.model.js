@@ -88,11 +88,11 @@ Cita.init(
       allowNull: false,
       defaultValue: "Confirmada", // Este debe coincidir con el ENUM
     },
-    recordatorio_enviado: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false,
-      allowNull: false
-    },
+    // recordatorio_enviado: {
+    //   type: DataTypes.BOOLEAN,
+    //   defaultValue: false,
+    //   allowNull: false
+    // },
   },
   {
     sequelize,
