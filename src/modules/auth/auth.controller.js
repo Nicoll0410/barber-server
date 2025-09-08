@@ -12,6 +12,7 @@ import { Barbero } from "../barberos/barberos.model.js";
 import { RolesPorPermisos } from "../roles/roles_por_permisos.js";
 import { Permiso } from "../roles/permisos.model.js";
 import { Cliente } from "../clientes/clientes.model.js";
+import { emailQueue } from "../../jobs/email-queue.js";
 
 class AuthController {
   async login(req = request, res = response) {
@@ -168,15 +169,15 @@ class AuthController {
       // Generar link de verificación para el correo
       const verificationLink = `${process.env.FRONTEND_URL}/verify-email?email=${encodeURIComponent(email)}&code=${codigo}`;
 
-      await sendEmail({
-        to: email,
-        subject: "Verifica tu cuenta en NY Barber",
-        html: correos.confirmarIdentidad({ 
-          codigo, 
-          email,
-          verificationLink // Pasamos el link al template
-        }),
-      });
+await sendEmailQueued({
+  to: email,
+  subject: "Verifica tu cuenta en NY Barber", 
+  html: correos.confirmarIdentidad({ 
+    codigo, 
+    email,
+    verificationLink
+  }),
+});
 
       return res.status(201).json({
         success: true,
