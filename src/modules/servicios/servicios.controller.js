@@ -10,23 +10,24 @@ import { CategoriaProducto } from "../categoria-insumos/categoria_insumos.model.
 import { Insumo } from "../insumos/insumos.model.js";
 
 class ServiciosController {
-  /* ───────────── Listar con filtros y paginación ───────────── */
-  async get(req = request, res = response) {
-    try {
-      const { offset, where, limit, order } = filtros.obtenerFiltros({
-        busqueda: req.query.search,
-        modelo: Servicio,
-        pagina: req.query.page,
-      });
+/* ───────────── Listar con filtros SIN paginación ───────────── */
+async get(req = request, res = response) {
+  try {
+    const { where, order } = filtros.obtenerFiltros({
+      busqueda: req.query.search,
+      modelo: Servicio,
+    });
 
-      const servicios = await Servicio.findAll({ offset, where, limit, order });
-      const total = await Servicio.count({ where });
+    // Traer todos los servicios sin limit ni offset
+    const servicios = await Servicio.findAll({ where, order });
+    const total = servicios.length;
 
-      return res.json({ servicios, total });
-    } catch (error) {
-      return res.status(400).json({ mensaje: error.message });
-    }
+    return res.json({ servicios, total });
+  } catch (error) {
+    return res.status(400).json({ mensaje: error.message });
   }
+}
+
 
   /* ─────────────── Buscar uno por ID (incluye insumos) ─────────────── */
   async findByPk(req = request, res = response) {
