@@ -319,142 +319,166 @@ class BarberosController {
   }
 
   // En barberos.controller.js - Método updateHorario modificado
-  async updateHorario(req, res) {
-    try {
-      const { diasLaborales, horarioAlmuerzo, excepciones } = req.body;
+// En barberos.controller.js - Reemplaza el método updateHorario completo
+async updateHorario(req, res) {
+  try {
+    const { id } = req.params;
+    const { diasLaborales, horarioAlmuerzo, excepciones } = req.body;
 
-      // Validación y normalización del horario de almuerzo
-      const validatedAlmuerzo = {
-        inicio: horarioAlmuerzo?.inicio || "13:00",
-        fin: horarioAlmuerzo?.fin || "14:00",
-        activo: horarioAlmuerzo?.activo !== false,
-      };
+    console.log('Datos recibidos para actualizar horario:', {
+      id,
+      diasLaborales,
+      horarioAlmuerzo,
+      excepciones
+    });
 
-      // Validar que la hora de fin sea posterior a la de inicio
-      const [inicioH, inicioM] = validatedAlmuerzo.inicio
-        .split(":")
-        .map(Number);
-      const [finH, finM] = validatedAlmuerzo.fin.split(":").map(Number);
-
-      const inicioTotal = inicioH * 60 + inicioM;
-      const finTotal = finH * 60 + finM;
-
-      if (finTotal <= inicioTotal) {
-        return res.status(400).json({
-          mensaje: "La hora de fin debe ser posterior a la hora de inicio",
-        });
-      }
-
-      // Validar que el almuerzo sea mínimo 30 minutos
-      if (finTotal - inicioTotal < 30) {
-        return res.status(400).json({
-          mensaje: "El horario de almuerzo debe ser de al menos 30 minutos",
-        });
-      }
-
-      // Validar días laborales
-      const diasValidos = [
-        "lunes",
-        "martes",
-        "miercoles",
-        "jueves",
-        "viernes",
-        "sabado",
-        "domingo",
-      ];
-      const diasLaboralesValidados = {};
-
-      diasValidos.forEach((dia) => {
-        diasLaboralesValidados[dia] = {
-          activo: diasLaborales[dia]?.activo || false,
-          horas: Array.isArray(diasLaborales[dia]?.horas)
-            ? diasLaborales[dia].horas.filter((h) => typeof h === "string")
-            : [],
-        };
-      });
-
-      // Validar excepciones
-      const excepcionesValidadas = Array.isArray(excepciones)
-        ? excepciones.filter((ex) => ex.fecha && typeof ex.activo === "boolean")
-        : [];
-
-      // Actualizar el horario y devolver el barbero completo con sus relaciones
-      // Actualizar el horario con cache deshabilitado
-      const [horario, created] = await HorarioBarbero.upsert(
-        {
-          barberoId: req.params.id,
-          diasLaborales: diasLaboralesValidados,
-          horarioAlmuerzo: validatedAlmuerzo,
-          excepciones: excepcionesValidadas,
-        },
-        {
-          returning: true,
-          // Asegurar que no hay caché
-          individualHooks: true,
-          hooks: true,
-        }
-      );
-
-      // Obtener el barbero actualizado sin caché
-      const barberoActualizado = await Barbero.findByPk(req.params.id, {
-        include: [
-          {
-            model: Usuario,
-            attributes: ["id", "email", "estaVerificado"],
-            include: [
-              {
-                model: Rol,
-                as: "rol",
-                attributes: ["id", "nombre", "avatar"],
-              },
-            ],
-          },
-          {
-            model: HorarioBarbero,
-          },
-        ],
-        // Deshabilitar caché
-        logging: console.log, // Para depuración
-        benchmark: true, // Para depuración
-        plain: true,
-        raw: false,
-      });
-
-      // Headers para evitar caché en el cliente
-      res.header(
-        "Cache-Control",
-        "no-store, no-cache, must-revalidate, proxy-revalidate"
-      );
-      res.header("Pragma", "no-cache");
-      res.header("Expires", "0");
-
-      return res.json({
-        mensaje: "Horario actualizado correctamente",
-        barbero: barberoActualizado,
-        horario: {
-          id: horario.id,
-          barberoId: horario.barberoId,
-          diasLaborales:
-            typeof horario.diasLaborales === "string"
-              ? JSON.parse(horario.diasLaborales)
-              : horario.diasLaborales,
-          horarioAlmuerzo: validatedAlmuerzo,
-          excepciones:
-            typeof horario.excepciones === "string"
-              ? JSON.parse(horario.excepciones)
-              : horario.excepciones || [],
-          createdAt: horario.createdAt,
-          updatedAt: horario.updatedAt,
-        },
-      });
-    } catch (err) {
-      console.error("BarberosController.updateHorario →", err);
-      return res.status(500).json({
-        mensaje: "Error al actualizar horario",
-        error: err.message,
+    // Validar que el barbero existe
+    const barbero = await Barbero.findByPk(id);
+    if (!barbero) {
+      return res.status(404).json({
+        mensaje: "Barbero no encontrado"
       });
     }
+
+    // Validación y normalización del horario de almuerzo
+    const validatedAlmuerzo = {
+      inicio: horarioAlmuerzo?.inicio || "13:00",
+      fin: horarioAlmuerzo?.fin || "14:00",
+      activo: horarioAlmuerzo?.activo !== false,
+    };
+
+    // Validar que la hora de fin sea posterior a la de inicio
+    const [inicioH, inicioM] = validatedAlmuerzo.inicio
+      .split(":")
+      .map(Number);
+    const [finH, finM] = validatedAlmuerzo.fin.split(":").map(Number);
+
+    const inicioTotal = inicioH * 60 + inicioM;
+    const finTotal = finH * 60 + finM;
+
+    if (finTotal <= inicioTotal) {
+      return res.status(400).json({
+        mensaje: "La hora de fin debe ser posterior a la hora de inicio",
+      });
+    }
+
+    // Validar que el almuerzo sea mínimo 30 minutos
+    if (finTotal - inicioTotal < 30) {
+      return res.status(400).json({
+        mensaje: "El horario de almuerzo debe ser de al menos 30 minutos",
+      });
+    }
+
+    // Validar días laborales
+    const diasValidos = [
+      "lunes",
+      "martes",
+      "miercoles",
+      "jueves",
+      "viernes",
+      "sabado",
+      "domingo",
+    ];
+    const diasLaboralesValidados = {};
+
+    diasValidos.forEach((dia) => {
+      diasLaboralesValidados[dia] = {
+        activo: diasLaborales[dia]?.activo || false,
+        horas: Array.isArray(diasLaborales[dia]?.horas)
+          ? diasLaborales[dia].horas.filter((h) => typeof h === "string")
+          : [],
+      };
+    });
+
+    // Validar excepciones
+    const excepcionesValidadas = Array.isArray(excepciones)
+      ? excepciones.filter((ex) => ex.fecha && typeof ex.activo === "boolean")
+      : [];
+
+    // Buscar si ya existe un horario para este barbero
+    let horarioExistente = await HorarioBarbero.findOne({
+      where: { barberoId: id }
+    });
+
+    if (horarioExistente) {
+      // Actualizar horario existente
+      await horarioExistente.update({
+        diasLaborales: diasLaboralesValidados,
+        horarioAlmuerzo: validatedAlmuerzo,
+        excepciones: excepcionesValidadas,
+      });
+    } else {
+      // Crear nuevo horario
+      horarioExistente = await HorarioBarbero.create({
+        barberoId: id,
+        diasLaborales: diasLaboralesValidados,
+        horarioAlmuerzo: validatedAlmuerzo,
+        excepciones: excepcionesValidadas,
+      });
+    }
+
+    // Recargar el horario actualizado para obtener los valores procesados
+    const horarioActualizado = await HorarioBarbero.findByPk(horarioExistente.id, {
+      include: [{
+        model: Barbero,
+        attributes: ['id', 'nombre']
+      }]
+    });
+
+    // Obtener el barbero actualizado con sus relaciones
+    const barberoActualizado = await Barbero.findByPk(id, {
+      include: [
+        {
+          model: Usuario,
+          attributes: ["id", "email", "estaVerificado"],
+          include: [
+            {
+              model: Rol,
+              as: "rol",
+              attributes: ["id", "nombre", "avatar"],
+            },
+          ],
+        },
+        {
+          model: HorarioBarbero,
+        },
+      ],
+    });
+
+    // Obtener el horario del barbero como objeto plano
+    const horarioData = horarioActualizado.get({ plain: true });
+
+    // Headers para evitar caché en el cliente
+    res.header(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate"
+    );
+    res.header("Pragma", "no-cache");
+    res.header("Expires", "0");
+
+    return res.json({
+      success: true,
+      mensaje: "Horario actualizado correctamente",
+      barbero: barberoActualizado,
+      horario: {
+        id: horarioData.id,
+        barberoId: horarioData.barberoId,
+        diasLaborales: horarioData.diasLaborales,
+        horarioAlmuerzo: horarioData.horarioAlmuerzo,
+        excepciones: horarioData.excepciones || [],
+        createdAt: horarioData.createdAt,
+        updatedAt: horarioData.updatedAt,
+      },
+    });
+  } catch (err) {
+    console.error("BarberosController.updateHorario → Error detallado:", err);
+    return res.status(500).json({
+      mensaje: "Error al actualizar horario",
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
+}
 
   // Método addExcepcion (sin cambios necesarios)
   async addExcepcion(req, res) {
